@@ -114,6 +114,7 @@ def extract_sources() -> dict[str, object]:
         manifest: dict[str, object] = {
             "input_intlib": _example_relative(INPUT_INTLIB),
             "component_count": len(intlib.components),
+            "component_parse_error": intlib.component_parse_error,
             "source_count": len(source_entries),
             "source_kinds": sorted({source.kind for source in source_entries}),
             "extracted_dir": _sample_relative(EXTRACT_DIR),
@@ -137,6 +138,8 @@ def main() -> None:
     manifest = extract_sources()
     print(f"Input IntLib: {manifest['input_intlib']}")
     print(f"Components: {manifest['component_count']}")
+    if manifest["component_parse_error"]:
+        print(f"Component metadata warning: {manifest['component_parse_error']}")
     print(f"Extracted source kinds: {', '.join(manifest['source_kinds'])}")
     print(f"Wrote sources: {manifest['extracted_dir']}")
     print(f"Wrote split sources: {manifest['split_dir']}")

@@ -120,6 +120,7 @@ def test_domain_docs_list_public_workflow_examples() -> None:
             "pcblib.md",
             "prjpcb.md",
             "altium_design.md",
+            "intlib.md",
         )
     )
 
@@ -130,6 +131,7 @@ def test_domain_docs_list_public_workflow_examples() -> None:
         "AltiumPcbDoc",
         "AltiumPcbLib",
         "AltiumPrjPcb",
+        "AltiumIntLib",
         "SchPointMils",
         "SchRectMils",
         "schdoc_add_note",
@@ -142,6 +144,7 @@ def test_domain_docs_list_public_workflow_examples() -> None:
         "outjob_runner",
         "pcbdoc_bom",
         "pcbdoc_pick_n_place",
+        "intlib_extract_sources",
         "altium_monkey.design.a1",
         "altium_monkey.netlist.a0",
     ):
@@ -1559,6 +1562,45 @@ def test_pcblib_split_writes_parseable_single_footprint_libraries(
         split_lib = AltiumPcbLib.from_file(split_path)
         assert len(split_lib.footprints) == 1
         assert split_lib.footprints[0].name == footprint["name"]
+
+
+def test_intlib_extract_sources_reports_metadata_and_writes_parseable_sources(
+    check_examples_root: Path,
+) -> None:
+    example = next(
+        item for item in _load_examples() if item["id"] == "intlib_extract_sources"
+    )
+    result = _run_example_entrypoint(example, check_examples_root)
+    assert result.returncode == 0, result.stderr
+
+    from altium_monkey import AltiumIntLib, AltiumPcbLib, AltiumSchLib
+
+    manifest_path = (
+        check_examples_root
+        / "intlib_extract_sources"
+        / "output"
+        / "intlib_extract_sources_manifest.json"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["input_intlib"] == "assets/projects/rt_super_c1/RT_SUPER_C1.IntLib"
+    assert manifest["component_parse_error"] is None
+    assert manifest["component_count"] > 0
+    assert {"SchLib", "PCBLib"}.issubset(set(manifest["source_kinds"]))
+
+    by_kind = {source["kind"]: source for source in manifest["extracted_sources"]}
+    schlib_path = (
+        check_examples_root / "intlib_extract_sources" / by_kind["SchLib"]["path"]
+    )
+    pcblib_path = (
+        check_examples_root / "intlib_extract_sources" / by_kind["PCBLib"]["path"]
+    )
+    assert len(AltiumSchLib.get_symbol_names(schlib_path)) > 0
+    assert len(AltiumPcbLib.get_footprint_names(pcblib_path)) > 0
+
+    source_intlib = check_examples_root / manifest["input_intlib"]
+    with AltiumIntLib(source_intlib) as intlib:
+        assert intlib.component_parse_error is None
+        assert len(intlib.get_source_entries()) == manifest["source_count"]
 
 
 def test_pcblib_add_free_3d_extruded_writes_component_body(

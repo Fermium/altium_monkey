@@ -130,9 +130,10 @@ The public docs are Markdown-first for this release:
 4. [PcbLib](docs/pcblib.md)
 5. [PrjPcb](docs/prjpcb.md)
 6. [AltiumDesign](docs/altium_design.md)
-7. [API patterns](docs/api_patterns/index.md)
-8. [Schema contracts](docs/schemas/index.md)
-9. [Examples](docs/examples/index.md)
+7. [IntLib](docs/intlib.md)
+8. [API patterns](docs/api_patterns/index.md)
+9. [Schema contracts](docs/schemas/index.md)
+10. [Examples](docs/examples/index.md)
 
 The examples are the best starting point for public API usage. They are kept in
 [`examples/`](examples/) and are indexed from `examples/manifest.toml`.
@@ -173,7 +174,8 @@ Known release boundaries include:
 
 1. PcbDoc does not yet have a generic `ObjectCollection`-style mutation API.
 2. PcbDoc does not yet have a public object deletion API.
-3. IntLib support is extract-only.
+3. IntLib support is extract-only, with fallback source-stream extraction when
+   component cross-reference metadata cannot be parsed.
 4. Variant processing is limited to DNP handling.
 5. Complex hierarchical channels and `.Annotation` file handling may need
    additional validation.

@@ -18,6 +18,8 @@ per symbol or footprint.
 4. Opening extracted `.SchLib` and `.PcbLib` files with the normal library APIs
 5. Splitting multi-symbol `.SchLib` and multi-footprint `.PcbLib` files
 6. Writing an extraction manifest without reusing machine-local source paths
+7. Checking `component_parse_error` for vendor IntLibs whose component metadata
+   is malformed but whose embedded source streams are still extractable
 
 ## Run
 

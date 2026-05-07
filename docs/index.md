@@ -43,6 +43,7 @@ Domain guides:
 4. [PcbLib](pcblib.md)
 5. [PrjPcb](prjpcb.md)
 6. [AltiumDesign](altium_design.md)
+7. [IntLib](intlib.md)
 
 See the [examples index](examples/index.md) for the implemented sample set.
 

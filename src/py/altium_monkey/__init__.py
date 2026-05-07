@@ -2,14 +2,15 @@
 Public Altium Python package.
 
 Core runtime code lives under ``tools/altium_monkey/src/py/altium_monkey``.
-Private test helpers live under the repo-level ``tools/altium_monkey/tests``
-package and remain importable as ``altium_monkey.tests`` for existing private
-test and oracle scripts.
+Private test helpers may live in the external WN test-suite repo and remain
+importable as ``altium_monkey.tests`` for existing private test and oracle
+scripts when ``WN_TEST_SUITES_ROOT`` is set.
 """
 
 # ruff: noqa: E402
 
 import importlib
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -17,12 +18,27 @@ from typing import Any
 from .altium_api_markers import public_api
 from ._version import __version__, __version_info__
 
-# Keep the repo-local private ``altium_monkey.tests`` package visible after the
-# src-layout move.
 _ALTIUM_REPO_ROOT = Path(__file__).resolve().parents[3]
-_repo_root_str = str(_ALTIUM_REPO_ROOT)
-if _repo_root_str not in __path__:
-    __path__.append(_repo_root_str)
+
+
+def _append_private_test_package_paths() -> None:
+    """
+    Keep external private test helpers importable as ``altium_monkey.tests``.
+    """
+    candidates = [_ALTIUM_REPO_ROOT]
+    suites_root = os.environ.get("WN_TEST_SUITES_ROOT")
+    if suites_root:
+        candidates.append(Path(suites_root).expanduser() / "suites" / "altium_monkey")
+
+    for candidate in candidates:
+        if not (candidate / "tests").exists():
+            continue
+        candidate_str = str(candidate)
+        if candidate_str not in __path__:
+            __path__.append(candidate_str)
+
+
+_append_private_test_package_paths()
 
 # OLE file utilities (CFB/Compound Binary Format)
 from .altium_ole import (

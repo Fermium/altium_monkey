@@ -16,7 +16,8 @@ notes.
 
 For domain-specific starting points, use [SchDoc](../schdoc.md),
 [SchLib](../schlib.md), [PcbDoc](../pcbdoc.md), [PcbLib](../pcblib.md),
-[PrjPcb](../prjpcb.md), and [AltiumDesign](../altium_design.md).
+[PrjPcb](../prjpcb.md), [AltiumDesign](../altium_design.md), and
+[IntLib](../intlib.md).
 
 ## Main Containers
 
@@ -55,6 +56,10 @@ systems. They handle project metadata, output jobs, and integrated-library
 source extraction. `AltiumPrjPcbBuilder` remains a narrow public helper for
 simple project-file generation; it should not be confused with the historical
 schematic fluent builder style.
+
+For integrated-library migration, `AltiumIntLib.component_parse_error` reports
+malformed component cross-reference metadata while still allowing embedded
+source streams to be discovered and extracted when they are present.
 
 ## Preferred Public Pattern
 
@@ -249,3 +254,6 @@ For PCB library workflows, see
 [`pcblib_extract_3d_models`](../../examples/pcblib_extract_3d_models/README.md),
 and
 [`pcblib_synthesize_power_resistor_lib`](../../examples/pcblib_synthesize_power_resistor_lib/README.md).
+
+For integrated library source recovery, see
+[`intlib_extract_sources`](../../examples/intlib_extract_sources/README.md).

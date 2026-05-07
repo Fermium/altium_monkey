@@ -2292,6 +2292,57 @@ class PcbSvgRenderer:
                 elements.extend(rendered)
         return elements
 
+    def _render_region_collection(
+        self,
+        ctx: PcbSvgRenderContext,
+        collection: list[object],
+        layer: PcbLayer,
+        layer_color: str,
+    ) -> list[str]:
+        """
+        Render region primitives with per-object copper-region color semantics.
+        """
+        elements: list[str] = []
+        for primitive in collection:
+            if self._should_skip_primitive_for_svg(primitive):
+                continue
+            to_svg = getattr(primitive, "to_svg", None)
+            if to_svg is None:
+                continue
+            color = self._region_color_for_layer(layer, layer_color, primitive)
+            call_kwargs = {
+                "stroke": color,
+                "include_metadata": self.options.include_metadata,
+            }
+            if self._to_svg_accepts_for_layer(to_svg):
+                call_kwargs["for_layer"] = layer
+            rendered = to_svg(ctx, **call_kwargs)
+            if rendered:
+                elements.extend(rendered)
+        return elements
+
+    def _region_color_for_layer(
+        self,
+        layer: PcbLayer,
+        layer_color: str,
+        primitive: object,
+    ) -> str:
+        if not layer.is_copper():
+            return layer_color
+        polygon_index = self._coerce_optional_int(getattr(primitive, "polygon_index", None))
+        # Vendor custom pad shapes often arrive as unlinked copper regions.
+        # Keep those in the layer color; only linked polygon pours use overlay color.
+        if polygon_index is None or polygon_index in _UNLINKED_INDEX_SENTINELS:
+            return layer_color
+        return str(self.options.polygon_overlay_color or layer_color)
+
+    @staticmethod
+    def _coerce_optional_int(value: object) -> int | None:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+
     @staticmethod
     def _to_svg_accepts_for_layer(to_svg: Any) -> bool:
         """
@@ -2415,26 +2466,18 @@ class PcbSvgRenderer:
         layer: PcbLayer,
         layer_color: str,
     ) -> list[str]:
-        region_color = layer_color
-        # Rendered polygon pours live in region/shape-based-region streams.
-        # Use polygon overlay color for these copper regions so polygon styling
-        # is visible in normal top/bottom/layer views.
-        if layer.is_copper():
-            region_color = str(self.options.polygon_overlay_color or layer_color)
         # ShapeBasedRegions are rendered copper geometry. Prefer them when present
         # to avoid duplicate filled regions from parallel region streams.
         if pcbdoc.shapebased_regions:
-            rendered = self._render_primitive_collection(
+            rendered = self._render_region_collection(
                 ctx,
                 pcbdoc.shapebased_regions,
                 layer,
-                region_color,
+                layer_color,
             )
             if rendered:
                 return rendered
-        return self._render_primitive_collection(
-            ctx, pcbdoc.regions, layer, region_color
-        )
+        return self._render_region_collection(ctx, pcbdoc.regions, layer, layer_color)
 
     def _render_texts_for_layer(
         self,

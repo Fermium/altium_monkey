@@ -144,7 +144,12 @@ class AltiumIntLib:
         """
         self.filepath = Path(filepath)
         self._ole = AltiumOleFile(str(self.filepath))
-        self._components = self._parse_components()
+        self._component_parse_error: str | None = None
+        try:
+            self._components = self._parse_components()
+        except ValueError as exc:
+            self._component_parse_error = str(exc)
+            self._components = ()
 
     @classmethod
     def from_file(cls, filepath: str | Path) -> "AltiumIntLib":
@@ -165,6 +170,17 @@ class AltiumIntLib:
         Component records parsed from `LibCrossRef.Txt`.
         """
         return self._components
+
+    @property
+    def component_parse_error(self) -> str | None:
+        """
+        Cross-reference parse error, if component metadata could not be read.
+
+        Some vendor-generated IntLibs contain extractable source streams but
+        malformed cross-reference metadata. In that case source extraction can
+        still proceed by scanning OLE stream paths directly.
+        """
+        return self._component_parse_error
 
     @property
     def stream_paths(self) -> tuple[str, ...]:
