@@ -1,9 +1,9 @@
-# altium-monkey 2026.05.07 Release Notes
+# altium-monkey 2026.05.08 Release Notes
 
-Package version: `2026.5.7`
+Package version: `2026.5.8`
 
-`2026.05.07` is represented in Python package metadata as the PEP 440
-canonical form `2026.5.7`.
+`2026.05.08` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.8`.
 
 ## Bug Fixes
 
@@ -23,9 +23,6 @@ the configured polygon overlay color.
 The public docs now include an IntLib guide covering source extraction,
 metadata fallback behavior, and the extract-only support boundary.
 
-The release-process documentation and `.env.example` now document the Twine
-environment variables used by the release wrapper.
-
 ## Public API Compatibility
 
 The `AltiumIntLib.component_parse_error` property is additive. Existing IntLib
@@ -43,7 +40,7 @@ This release supports Python 3.11 and Python 3.12.
 
 Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
 the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
-validated through the full release pipeline on Python 3.13.
+validated on Python 3.13.
 
 ## Functional Gaps
 
