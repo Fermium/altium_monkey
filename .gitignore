@@ -12,9 +12,6 @@ __pycache__/
 # Example run artifacts
 examples/**/output/
 
-# Tool run artifacts
-tools/altium_viewer_probe_out/
-
 # Virtual environments
 .venv/
 venv/
