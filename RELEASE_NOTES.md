@@ -1,14 +1,34 @@
-# altium-monkey 2026.05.12 Release Notes
+# altium-monkey 2026.05.18 Release Notes
 
-Package version: `2026.5.12`
+Package version: `2026.5.18`
 
-`2026.05.12` is represented in Python package metadata as the PEP 440
-canonical form `2026.5.12`.
+`2026.05.18` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.18`.
 
-This release focuses on parser, extraction, rendering, and deterministic-output
-fixes that landed after `2026.5.8`.
+This release is a focused parser and rendering follow-up after `2026.5.12`. It
+also carries forward the parser, extraction, rendering, and
+deterministic-output fixes from that release.
 
 ## Bug Fixes
+
+### PCB SVG skips text records with no drawable glyph geometry
+
+PCB text records whose resolved glyphs produce no drawable geometry now emit no
+SVG path output. This prevents empty or placeholder text geometry from
+appearing when a font cannot provide visible outlines for a record.
+
+### Fixed-width PCB UTF-16 text fields decode safely
+
+Fixed-width UTF-16-LE PCB text fields now decode through a safer path that
+handles truncated or partially populated buffers defensively. This improves
+parsing robustness for board records that store text in fixed binary fields.
+
+### PcbLib footprint regions handle extended-vertex records
+
+Some footprint `Data` streams store shape-based region geometry under the
+standard `REGION` record discriminator while using the extended, arc-capable
+vertex layout. PcbLib extraction now detects that layout and preserves the
+shape-based region geometry instead of treating the payload as a simple region.
 
 ### PCB metadata follows Windows-1252 text semantics
 

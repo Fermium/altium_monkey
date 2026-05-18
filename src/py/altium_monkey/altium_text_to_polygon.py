@@ -882,6 +882,15 @@ def _translated_glyph_polygons(
     ]
 
 
+def _copy_glyph_characters(
+    characters: list[list[GlyphPolygon]],
+) -> list[list[GlyphPolygon]]:
+    return [
+        _translated_glyph_polygons(polygons, dx_mm=0.0, dy_mm=0.0)
+        for polygons in characters
+    ]
+
+
 class TrueTypeTextRenderer:
     """
     Renders TrueType text to filled polygon contours.
@@ -899,9 +908,15 @@ class TrueTypeTextRenderer:
     def __init__(self) -> None:
         self._ft_face_cache: dict[str, Any] = {}
         self._font_data_cache: dict[str, bytes] = {}
+        self._font_factor_cache: dict[str, float] = {}
+        self._font_path_cache: dict[tuple[str, bool, bool, int | None], str | None] = {}
         self._hb_font_cache: dict[tuple[str, int], Any] = {}
         self._glyph_polygon_cache: dict[
             tuple[str, int, float, float, float], list[GlyphPolygon]
+        ] = {}
+        self._line_polygon_cache: dict[
+            tuple[str, str, float, float, float, float, bool, bool],
+            tuple[list[list[GlyphPolygon]], float],
         ] = {}
 
     def _glyph_polygons_at_origin(
@@ -1009,6 +1024,11 @@ class TrueTypeTextRenderer:
 
                 This is the same factor used in altium_ttf_metrics.py TrueTypeFont.get_factor()
         """
+        if font_path is not None:
+            cached = self._font_factor_cache.get(font_path)
+            if cached is not None:
+                return cached
+
         upem = face.units_per_EM
 
         # Prefer OS/2 win metrics (matches Altium/GDI+ for fonts where hhea
@@ -1022,7 +1042,9 @@ class TrueTypeTextRenderer:
                 descender = float(getattr(ttf_font, "descender", 0.0))
                 cell_height = ascender + descender
                 if cell_height > 0:
-                    return upem / cell_height
+                    factor = upem / cell_height
+                    self._font_factor_cache[font_path] = factor
+                    return factor
             except Exception:
                 pass
 
@@ -1030,7 +1052,10 @@ class TrueTypeTextRenderer:
         cell_height = face.ascender + abs(face.descender)
         if cell_height == 0:
             return 1.0
-        return upem / cell_height
+        factor = upem / cell_height
+        if font_path is not None:
+            self._font_factor_cache[font_path] = factor
+        return factor
 
     def _render_single_line(
         self,
@@ -1071,6 +1096,21 @@ class TrueTypeTextRenderer:
         characters: list[list[GlyphPolygon]] = []
         if not line_text:
             return characters, 0.0
+
+        line_cache_key = (
+            font_path,
+            line_text,
+            round(float(scale), 12),
+            round(float(x_scale), 12),
+            round(float(flatten_tolerance), 12),
+            round(float(y_offset_mm), 12),
+            bool(anchor_to_ink_edge),
+            bool(use_hb_positioning),
+        )
+        cached_line = self._line_polygon_cache.get(line_cache_key)
+        if cached_line is not None:
+            cached_characters, cached_advance = cached_line
+            return _copy_glyph_characters(cached_characters), cached_advance
 
         # Use HarfBuzz only for Unicode-to-glyph ID mapping (handles cmap, GSUB).
         # We do NOT use HarfBuzz's x_advance/x_offset/y_offset because GDI+
@@ -1140,6 +1180,10 @@ class TrueTypeTextRenderer:
             cursor_x += raw_advance
 
         advance_width_mm = cursor_x * scale * x_scale
+        self._line_polygon_cache[line_cache_key] = (
+            _copy_glyph_characters(characters),
+            advance_width_mm,
+        )
         return characters, advance_width_mm
 
     def _measure_text_advance_mm(
@@ -1375,12 +1419,22 @@ class TrueTypeTextRenderer:
         is_italic: bool,
         font_resolver: FontPathResolver | None,
     ) -> tuple[str | None, object | None, int, float]:
-        font_path = _find_font_path(
+        font_cache_key = (
             font_name,
-            is_bold,
-            is_italic,
-            font_resolver=font_resolver,
+            bool(is_bold),
+            bool(is_italic),
+            id(font_resolver) if font_resolver is not None else None,
         )
+        if font_cache_key in self._font_path_cache:
+            font_path = self._font_path_cache[font_cache_key]
+        else:
+            font_path = _find_font_path(
+                font_name,
+                is_bold,
+                is_italic,
+                font_resolver=font_resolver,
+            )
+            self._font_path_cache[font_cache_key] = font_path
         if font_path is None:
             log.warning(
                 "Font not found: %s (bold=%s, italic=%s)",

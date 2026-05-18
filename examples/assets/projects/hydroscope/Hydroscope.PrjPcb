@@ -36,7 +36,7 @@ ConstraintManagerFlow=0
 OutputPath=Project Outputs for ARL_ANSI_D
 LogFolderPath=
 ManagedProjectGUID=
-Template=C:\Users\Eli Hughes\OneDrive - TZero Research and Development\eLibraries\Templates\Project\2 Layer TZERO Skeleton Project.PrjPcb
+Template=.\templates\Project Skeleton.PrjPcb
 IncludeDesignInRelease=0
 CrossRefSheetStyle=1
 CrossRefLocationStyle=1
@@ -221,7 +221,7 @@ VariationCount=0
 ParamVariationCount=0
 
 [SearchPath1]
-Path=..\..\..\..\..\..\..\OneDrive - TZero Research and Development\eLibraries\udder_lib\PCB\*.*
+Path=.\libraries\pcb\*.*
 IncludeSubFolders=1
 
 [Parameter1]

@@ -40,6 +40,7 @@ from .altium_record_pcb__arc import AltiumPcbArc
 from .altium_record_pcb__text import AltiumPcbText
 from .altium_record_pcb__fill import AltiumPcbFill
 from .altium_record_pcb__region import AltiumPcbRegion
+from .altium_record_pcb__shapebased_region import AltiumPcbShapeBasedRegion
 from .altium_record_pcb__via import AltiumPcbVia
 from .altium_record_pcb__component_body import AltiumPcbComponentBody
 
@@ -51,6 +52,79 @@ log = logging.getLogger(__name__)
 
 PcbPointMils = Sequence[float]
 PcbBoundsMils = Sequence[float]
+
+
+def _region_record_has_extended_vertices(data: bytes, offset: int) -> bool:
+    """
+    Return true when a PcbLib REGION record uses extended arc-capable vertices.
+    """
+    if offset + 5 > len(data) or data[offset] != PcbRecordType.REGION:
+        return False
+    subrecord_len = struct.unpack("<I", data[offset + 1 : offset + 5])[0]
+    content_start = offset + 5
+    content_end = content_start + subrecord_len
+    if content_end > len(data) or subrecord_len < 26:
+        return False
+
+    content = data[content_start:content_end]
+    hole_count = struct.unpack("<H", content[14:16])[0]
+    props_len_pos = 18
+    if props_len_pos + 4 > len(content):
+        return False
+    props_len = struct.unpack("<I", content[props_len_pos : props_len_pos + 4])[0]
+    props_end = props_len_pos + 4 + props_len
+    if props_end > len(content):
+        return False
+
+    candidate_positions = [props_end]
+    if props_end < len(content) and content[props_end] == 0:
+        candidate_positions.append(props_end + 1)
+
+    for vertex_count_pos in candidate_positions:
+        simple_fits = _region_vertex_layout_fits(
+            content,
+            vertex_count_pos,
+            hole_count=hole_count,
+            outline_vertex_size=16,
+            outline_count_extra=0,
+        )
+        extended_fits = _region_vertex_layout_fits(
+            content,
+            vertex_count_pos,
+            hole_count=hole_count,
+            outline_vertex_size=37,
+            outline_count_extra=1,
+        )
+        if extended_fits and not simple_fits:
+            return True
+    return False
+
+
+def _region_vertex_layout_fits(
+    content: bytes,
+    vertex_count_pos: int,
+    *,
+    hole_count: int,
+    outline_vertex_size: int,
+    outline_count_extra: int,
+) -> bool:
+    if vertex_count_pos + 4 > len(content):
+        return False
+    outline_count = struct.unpack(
+        "<I", content[vertex_count_pos : vertex_count_pos + 4]
+    )[0]
+    cursor = vertex_count_pos + 4
+    cursor += (outline_count + outline_count_extra) * outline_vertex_size
+    if cursor > len(content):
+        return False
+    for _ in range(hole_count):
+        if cursor + 4 > len(content):
+            return False
+        hole_vertex_count = struct.unpack("<I", content[cursor : cursor + 4])[0]
+        cursor += 4 + (hole_vertex_count * 16)
+        if cursor > len(content):
+            return False
+    return cursor == len(content)
 
 
 def _coerce_point_mils(point: PcbPointMils, name: str) -> tuple[float, float]:
@@ -994,7 +1068,10 @@ class AltiumPcbFootprint:
                     offset += bytes_consumed
 
                 elif type_byte == PcbRecordType.REGION:
-                    region = AltiumPcbRegion()
+                    if _region_record_has_extended_vertices(data, offset):
+                        region = AltiumPcbShapeBasedRegion()
+                    else:
+                        region = AltiumPcbRegion()
                     bytes_consumed = region.parse_from_binary(data, offset)
                     self.regions.append(region)
                     self._record_order.append(region)

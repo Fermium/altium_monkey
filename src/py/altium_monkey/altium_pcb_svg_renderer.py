@@ -1967,6 +1967,8 @@ class PcbSvgRenderer:
         visible: set[PcbLayer],
     ) -> None:
         derived_pad_layers = (
+            PcbLayer.TOP,
+            PcbLayer.BOTTOM,
             PcbLayer.TOP_SOLDER,
             PcbLayer.BOTTOM_SOLDER,
             PcbLayer.TOP_PASTE,

@@ -23,6 +23,26 @@ def _mm_to_svg_y(ctx: "PcbSvgRenderContext", y_mm: float) -> float:
     return ctx.y_to_svg(y_mm / 0.0254)
 
 
+def _decode_fixed_utf16le(data: bytes) -> str:
+    """
+    Decode a fixed-size UTF-16-LE field, stopping at the first NUL terminator.
+
+    Mirrors C++ ``decode_fixed_utf16le``. Bytes after the NUL pair may
+    contain garbage (random padding from prior allocations) that is not
+    valid UTF-16, so we must locate the terminator before decoding to
+    avoid losing the entire string to a UnicodeDecodeError.
+    """
+    end = len(data)
+    for i in range(0, end - 1, 2):
+        if data[i] == 0 and data[i + 1] == 0:
+            end = i
+            break
+    try:
+        return bytes(data[:end]).decode("utf-16-le")
+    except UnicodeDecodeError:
+        return bytes(data[:end]).decode("utf-16-le", errors="replace")
+
+
 class AltiumPcbText(PcbGraphicalObject):
     """
     PCB text primitive record.
@@ -233,10 +253,7 @@ class AltiumPcbText(PcbGraphicalObject):
         if pos + 64 <= len(content):
             font_name_bytes = content[pos : pos + 64]
             self._font_name_raw = bytes(font_name_bytes)
-            try:
-                self.font_name = font_name_bytes.decode("utf-16-le").split("\x00")[0]
-            except Exception:
-                self.font_name = ""
+            self.font_name = _decode_fixed_utf16le(font_name_bytes)
             pos += 64
         else:
             pos = len(content)
@@ -284,10 +301,7 @@ class AltiumPcbText(PcbGraphicalObject):
         self.barcode_render_mode = bc[21]
         self.barcode_inverted = bc[22] != 0
         self.font_type = bc[23]
-        try:
-            self.barcode_font_name = bc[24:88].decode("utf-16-le").split("\x00")[0]
-        except Exception:
-            self.barcode_font_name = ""
+        self.barcode_font_name = _decode_fixed_utf16le(bc[24:88])
         self.barcode_show_text = bc[88] != 0
         self.barcode_layer_v7 = struct.unpack("<i", bc[89:93])[0]
         self._barcode_font_name_raw = bytes(bc[24:88])
@@ -980,6 +994,12 @@ class AltiumPcbText(PcbGraphicalObject):
                 )
                 if stroke_elements:
                     return stroke_elements
+                # Renderer succeeded but produced no geometry (e.g. an
+                # embedded TrueType font where the requested glyph has
+                # ``numberOfContours == 0``). Altium itself silently emits
+                # nothing for such records, so match that behavior rather
+                # than treating it as a fatal error.
+                return []
         except Exception as exc:
             if not allow_fallback:
                 raise RuntimeError(
