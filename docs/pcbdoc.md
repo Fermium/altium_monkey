@@ -1,8 +1,8 @@
 # PcbDoc
 
 `AltiumPcbDoc` is the public container for PCB documents. The current release
-focuses on parsing, extraction, SVG rendering, statistics, targeted authoring,
-and footprint insertion.
+supports parsing, extraction, SVG rendering, statistics, high-level
+helper-oriented authoring, and footprint insertion.
 
 Use it when you need to:
 
@@ -10,15 +10,18 @@ Use it when you need to:
 2. inspect board geometry, layers, drills, nets, and resolved components
 3. render PCB layers to SVG
 4. extract embedded fonts, 3D models, or footprints
-5. add simple PCB primitives and routes
+5. add board outlines, nets, PCB primitives, routes, pads, vias, and regions
 6. place footprints from `.PcbLib`
+7. add component bodies and embedded 3D model payloads
 
 ## Object Model
 
-PcbDoc does not yet use the generic `ObjectCollection` API used by SchDoc.
-Instead, parsed records are exposed as typed lists such as `pcbdoc.tracks`,
-`pcbdoc.arcs`, `pcbdoc.pads`, `pcbdoc.vias`, `pcbdoc.regions`,
-`pcbdoc.texts`, and `pcbdoc.components`.
+PcbDoc does not yet use the generic `ObjectCollection` API used by SchDoc and
+SchLib. SchDoc/SchLib typed views are live filtered query views with explicit
+structural APIs such as `add_object(...)`, `insert_object(...)`, and
+`remove_object(...)`. PcbDoc instead exposes parsed records as typed lists such
+as `pcbdoc.tracks`, `pcbdoc.arcs`, `pcbdoc.pads`, `pcbdoc.vias`,
+`pcbdoc.regions`, `pcbdoc.texts`, and `pcbdoc.components`.
 
 For authoring, prefer high-level helpers:
 
@@ -30,6 +33,7 @@ pcbdoc.add_pad(
     width_mils=60,
     height_mils=80,
 )
+pcbdoc.add_via(position_mils=(1750, 1500), diameter_mils=24, hole_size_mils=12)
 pcbdoc.save("updated.PcbDoc")
 ```
 
@@ -52,11 +56,58 @@ methods until metric helper functions are added.
 Low-level PCB record fields may expose Altium internal integer units. Prefer
 public helper methods for authored geometry.
 
+## Via Protection, Tenting, And Delay
+
+`AltiumPcbDoc.add_via(...)` can author ordinary through vias and promoted via
+metadata:
+
+```python
+from altium_monkey import (
+    AltiumPcbDoc,
+    PcbIpc4761ViaType,
+    PcbViaStructureFeatureSide,
+    PcbViaStructureFeatureType,
+)
+
+pcbdoc = AltiumPcbDoc()
+via = pcbdoc.add_via(
+    position_mils=(1000, 1000),
+    diameter_mils=24,
+    hole_size_mils=10,
+    ipc4761_via_type=PcbIpc4761ViaType.TYPE_7_FILLING_AND_CAPPING,
+    propagation_delay_ps=12.5,
+    is_tent_top=True,
+    is_tent_bottom=True,
+)
+via.set_ipc4761_feature_side(
+    PcbViaStructureFeatureType.FILLING,
+    PcbViaStructureFeatureSide.BOTH,
+)
+via.set_ipc4761_feature_material(PcbViaStructureFeatureType.FILLING, "EPOXY")
+```
+
+Parsed vias are available through `pcbdoc.vias`. Each `AltiumPcbVia` exposes
+`ipc4761_via_type`, `via_structure`, `propagation_delay_ps`, ordinary
+top/bottom tenting flags, fabrication testpoint flags, and assembly testpoint
+flags. The feature-table helpers `get_ipc4761_feature(...)`,
+`set_ipc4761_feature(...)`, `set_ipc4761_feature_side(...)`, and
+`set_ipc4761_feature_material(...)` mirror the IPC-4761 feature rows shown by
+Altium Designer.
+
+The public propagation-delay unit is picoseconds. Altium stores this field as a
+seconds value in the underlying VIA payload, but callers should use
+`propagation_delay_ps`.
+
+Solder-mask expansion fields on a via are low-level record fields in Altium
+internal units. They remain available for careful mutation and round-trip
+preservation; use the via examples below when authoring tenting or manual mask
+expansion for Altium Designer review.
+
 ## Current Gaps
 
-There is no public PcbDoc object deletion API in this release.
+PcbDoc does not yet use `ObjectCollection`.
 
-There is no generic `ObjectCollection`-style query API for PcbDoc yet.
+There is no public generic PcbDoc object deletion API in this release.
 
 Mutations outside the high-level helper methods generally require direct
 record-list edits and should be validated carefully.
@@ -74,13 +125,15 @@ Start with:
 7. [`pcbdoc_add_track`](../examples/pcbdoc_add_track/README.md)
 8. [`pcbdoc_add_arc`](../examples/pcbdoc_add_arc/README.md)
 9. [`pcbdoc_add_pad`](../examples/pcbdoc_add_pad/README.md)
-10. [`pcbdoc_add_text`](../examples/pcbdoc_add_text/README.md)
-11. [`pcbdoc_add_filled_region`](../examples/pcbdoc_add_filled_region/README.md)
-12. [`pcbdoc_insert_nets_route`](../examples/pcbdoc_insert_nets_route/README.md)
-13. [`pcbdoc_insert_footprint_from_pcblib`](../examples/pcbdoc_insert_footprint_from_pcblib/README.md)
-14. [`pcbdoc_extract_pcblib`](../examples/pcbdoc_extract_pcblib/README.md)
-15. [`pcbdoc_extract_embedded_3d_models`](../examples/pcbdoc_extract_embedded_3d_models/README.md)
-16. [`pcbdoc_extract_embedded_fonts`](../examples/pcbdoc_extract_embedded_fonts/README.md)
+10. [`pcbdoc_add_via_ipc4761_matrix`](../examples/pcbdoc_add_via_ipc4761_matrix/README.md)
+11. [`pcbdoc_mutate_via_ipc4761`](../examples/pcbdoc_mutate_via_ipc4761/README.md)
+12. [`pcbdoc_add_text`](../examples/pcbdoc_add_text/README.md)
+13. [`pcbdoc_add_filled_region`](../examples/pcbdoc_add_filled_region/README.md)
+14. [`pcbdoc_insert_nets_route`](../examples/pcbdoc_insert_nets_route/README.md)
+15. [`pcbdoc_insert_footprint_from_pcblib`](../examples/pcbdoc_insert_footprint_from_pcblib/README.md)
+16. [`pcbdoc_extract_pcblib`](../examples/pcbdoc_extract_pcblib/README.md)
+17. [`pcbdoc_extract_embedded_3d_models`](../examples/pcbdoc_extract_embedded_3d_models/README.md)
+18. [`pcbdoc_extract_embedded_fonts`](../examples/pcbdoc_extract_embedded_fonts/README.md)
 
 See [API patterns](api_patterns/index.md) for public vs careful mutation
 guidance.

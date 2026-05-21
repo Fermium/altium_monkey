@@ -37,7 +37,7 @@ authoring.
 `AltiumPcbDoc` is the PCB document container. The current public PCB API is
 helper-oriented rather than `ObjectCollection`-oriented. Use methods such as
 `add_track(...)`, `add_arc(...)`, `add_pad(...)`, `add_region(...)`,
-`add_text(...)`, `add_component_from_pcblib(...)`,
+`add_via(...)`, `add_text(...)`, `add_component_from_pcblib(...)`,
 `add_extruded_3d_body(...)`, and `add_embedded_3d_model(...)`. Parsed PCB
 records are available through typed lists such as `pcbdoc.tracks`,
 `pcbdoc.pads`, `pcbdoc.components`, and `pcbdoc.component_bodies`.
@@ -144,10 +144,10 @@ container-owned add/remove operations. This is the preferred pattern for
 schematic examples and future schematic API work.
 
 PcbDoc and PcbLib currently expose high-level helper methods plus typed record
-lists. They do not yet expose the same generic `ObjectCollection` query and
-delete API used by SchDoc. This means PCB creation is straightforward through
-`add_*` helpers, while arbitrary PCB mutation is more record-list oriented and
-should be handled with more care.
+lists. They do not yet expose the same generic `ObjectCollection` ownership
+model or generic deletion API used by SchDoc. This means PCB creation is
+straightforward through `add_*` helpers, while arbitrary PCB mutation is more
+record-list oriented and should be handled with more care.
 
 The practical difference is ownership maturity. Schematic ownership rules are
 centralized in the document object model. PCB ownership and binary stream state
@@ -170,6 +170,9 @@ Stable public patterns:
   `merge(...)`, and `save(...)`.
 - `AltiumPcbDoc` high-level `add_*`, extraction, rendering, and `save(...)`
   methods.
+- `AltiumPcbVia` fields for via geometry, IPC-4761 type, IPC-4761 feature
+  rows, propagation delay in picoseconds, tenting, fabrication testpoint, and
+  assembly testpoint metadata.
 - `AltiumPcbLib`, `AltiumPcbFootprint`, footprint high-level `add_*`,
   embedded-model, SVG, split, and save methods.
 - `AltiumPrjPcb` for project parameters, variants, document references, and
@@ -217,6 +220,11 @@ Low-level record fields may expose Altium internal units. Those fields are
 useful for round-trip preservation and serializer work, but they should not be
 the first choice for public authored geometry.
 
+PCB via propagation delay is the exception where the public property is named
+for its unit: use `via.propagation_delay_ps` and
+`add_via(..., propagation_delay_ps=...)`. Altium stores the serialized value in
+seconds, but the public API uses picoseconds to match the Via dialog.
+
 ## Examples To Study
 
 Start with [`hello_schdoc`](../../examples/hello_schdoc/README.md),
@@ -242,10 +250,14 @@ For PCB authoring, see
 [`pcbdoc_add_track`](../../examples/pcbdoc_add_track/README.md),
 [`pcbdoc_add_arc`](../../examples/pcbdoc_add_arc/README.md),
 [`pcbdoc_add_pad`](../../examples/pcbdoc_add_pad/README.md),
+[`pcbdoc_add_via_ipc4761_matrix`](../../examples/pcbdoc_add_via_ipc4761_matrix/README.md),
 [`pcbdoc_add_text`](../../examples/pcbdoc_add_text/README.md),
 [`pcbdoc_add_filled_region`](../../examples/pcbdoc_add_filled_region/README.md),
 and
 [`pcbdoc_insert_nets_route`](../../examples/pcbdoc_insert_nets_route/README.md).
+
+For targeted PCB mutation, see
+[`pcbdoc_mutate_via_ipc4761`](../../examples/pcbdoc_mutate_via_ipc4761/README.md).
 
 For PCB library workflows, see
 [`pcblib_find_footprint`](../../examples/pcblib_find_footprint/README.md),

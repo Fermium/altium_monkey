@@ -4,15 +4,25 @@ Parse PCB via primitive records.
 
 import html
 import logging
+import math
 import struct
 from typing import TYPE_CHECKING
 
-from .altium_pcb_enums import PcbViaMode
+from .altium_pcb_enums import (
+    PcbIpc4761ViaType,
+    PcbViaMode,
+    PcbViaStructureFeatureSide,
+    PcbViaStructureFeatureType,
+)
 from .altium_pcb_mask_paste_rules import get_via_mask_expansion_iu
 from .altium_record_types import PcbGraphicalObject, PcbLayer, PcbRecordType
 
 if TYPE_CHECKING:
     from .altium_pcb_svg_renderer import PcbSvgRenderContext
+    from .altium_pcb_via_structure import (
+        AltiumPcbViaStructure,
+        AltiumPcbViaStructureFeature,
+    )
 
 
 _MIL_TO_MM = 0.0254
@@ -20,6 +30,14 @@ _VIA_SUBRECORD_DEFAULT_LENGTH = 321
 _STACKCR_PCT_REL_OFFSETS = (0, 3, 6, 9, 12, 15, 18, 21)
 _STACKCR_USE_PERCENT_REL_OFFSETS = (1, 4, 7, 10, 16, 19)
 _STACKCR_SIZE_REL_OFFSETS = (2, 5, 8, 11, 14, 17, 20)
+_PROPAGATION_DELAY_REL_OFFSET = 17
+_PICOSECONDS_PER_SECOND = 1_000_000_000_000.0
+_SECONDS_PER_PICOSECOND = 1.0 / _PICOSECONDS_PER_SECOND
+_AD25_PROPAGATION_DELAY_TAIL_DEFAULTS = {
+    5: 0x1E,
+    9: 0x09,
+    21: 0x01,
+}
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +50,11 @@ def _write_u8(content: bytearray, offset: int, value: int, *, u8: callable) -> N
 def _write_i32(content: bytearray, offset: int, value: int) -> None:
     if 0 <= offset and offset + 4 <= len(content):
         struct.pack_into("<i", content, offset, int(value))
+
+
+def _write_f32(content: bytearray, offset: int, value: float) -> None:
+    if 0 <= offset and offset + 4 <= len(content):
+        struct.pack_into("<f", content, offset, float(value))
 
 
 def _write_bytes(content: bytearray, offset: int, value: bytes) -> None:
@@ -170,6 +193,9 @@ class AltiumPcbVia(PcbGraphicalObject):
         self.neg_tolerance: int = 0
         self.backdrill_params: dict[str, object] = {}
         self.counterhole_params: dict[str, object] = {}
+        self.ipc4761_via_type: PcbIpc4761ViaType | int = PcbIpc4761ViaType.NONE
+        self.via_structure: "AltiumPcbViaStructure | None" = None
+        self.via_structure_index: int | None = None
         self._subrecord_length: int = _VIA_SUBRECORD_DEFAULT_LENGTH
         self._raw_subrecord1_content: bytes | None = None
         self._tail_layout_shift: int = 0
@@ -237,6 +263,8 @@ class AltiumPcbVia(PcbGraphicalObject):
             _STACKCR_USE_PERCENT_REL_OFFSETS
         )
         self.stackcr_size_tokens: list[int] = [0] * len(_STACKCR_SIZE_REL_OFFSETS)
+        self._propagation_delay_ps: float = 0.0
+        self._propagation_delay_dirty: bool = False
 
     @staticmethod
     def _decode_external_stack_entries(
@@ -272,6 +300,97 @@ class AltiumPcbVia(PcbGraphicalObject):
         Return StackCR use-percent lane booleans derived from raw lane tokens.
         """
         return tuple(bool(int(v)) for v in self.stackcr_use_percent_tokens)  # type: ignore[return-value]
+
+    @property
+    def propagation_delay_ps(self) -> float:
+        """
+        Via propagation delay in picoseconds.
+
+        Altium serializes this field as a 32-bit float in seconds in the VIA
+        payload tail; the public OOP model intentionally exposes picoseconds to
+        match the Via dialog.
+        """
+        return float(self._propagation_delay_ps)
+
+    @propagation_delay_ps.setter
+    def propagation_delay_ps(self, value: float) -> None:
+        value_float = float(value)
+        if not math.isfinite(value_float):
+            raise ValueError("Via propagation delay must be finite")
+        self._propagation_delay_ps = value_float
+        self._propagation_delay_dirty = True
+
+    @property
+    def propagation_delay(self) -> float:
+        """Alias for `propagation_delay_ps`."""
+        return self.propagation_delay_ps
+
+    @propagation_delay.setter
+    def propagation_delay(self, value: float) -> None:
+        self.propagation_delay_ps = value
+
+    def get_ipc4761_feature(
+        self,
+        feature_type: PcbViaStructureFeatureType | int,
+    ) -> "AltiumPcbViaStructureFeature | None":
+        """Return one IPC-4761 feature-table row attached to this via."""
+        if self.via_structure is None:
+            return None
+        return self.via_structure.get_feature(feature_type)
+
+    def set_ipc4761_feature(
+        self,
+        feature_type: PcbViaStructureFeatureType | int,
+        *,
+        side: PcbViaStructureFeatureSide | int | None = None,
+        material: str | None = None,
+    ) -> "AltiumPcbViaStructureFeature":
+        """
+        Update one IPC-4761 feature-table row for this via.
+
+        The via must have a non-`NONE` `ipc4761_via_type`. If the parsed
+        structure is missing, Altium's default rows for the selected type are
+        created before applying the row update.
+        """
+        from .altium_pcb_via_structure import default_via_structure_for_type
+
+        via_type = int(self.ipc4761_via_type)
+        if via_type == int(PcbIpc4761ViaType.NONE):
+            raise ValueError("IPC-4761 feature rows require a non-NONE via type")
+
+        structure = self.via_structure
+        if structure is None or int(structure.structure_type) != via_type:
+            structure = default_via_structure_for_type(via_type)
+        if structure is None:
+            raise ValueError(f"Unsupported IPC-4761 via type: {via_type}")
+
+        updated = structure.with_feature(
+            feature_type,
+            side=side,
+            material=material,
+        )
+        self.via_structure = updated
+        self.ipc4761_via_type = updated.ipc4761_via_type
+        updated_feature = updated.get_feature(feature_type)
+        if updated_feature is None:
+            raise ValueError(f"Missing IPC-4761 feature row: {int(feature_type)}")
+        return updated_feature
+
+    def set_ipc4761_feature_side(
+        self,
+        feature_type: PcbViaStructureFeatureType | int,
+        side: PcbViaStructureFeatureSide | int,
+    ) -> "AltiumPcbViaStructureFeature":
+        """Update the side column for one IPC-4761 feature-table row."""
+        return self.set_ipc4761_feature(feature_type, side=side)
+
+    def set_ipc4761_feature_material(
+        self,
+        feature_type: PcbViaStructureFeatureType | int,
+        material: str,
+    ) -> "AltiumPcbViaStructureFeature":
+        """Update the material column for one IPC-4761 feature-table row."""
+        return self.set_ipc4761_feature(feature_type, material=material)
 
     # -- Reserved-field properties for audit and analysis scripts --
 
@@ -657,6 +776,8 @@ class AltiumPcbVia(PcbGraphicalObject):
         self.stackcr_pct_tokens = [0] * len(_STACKCR_PCT_REL_OFFSETS)
         self.stackcr_use_percent_tokens = [0] * len(_STACKCR_USE_PERCENT_REL_OFFSETS)
         self.stackcr_size_tokens = [0] * len(_STACKCR_SIZE_REL_OFFSETS)
+        self._propagation_delay_ps = 0.0
+        self._propagation_delay_dirty = False
         self.unique_id_bytes = b"\x00" * 16
         self.tail_signature_bytes = b"\x00" * 16
         self._external_stack_entry_count = 0
@@ -802,6 +923,22 @@ class AltiumPcbVia(PcbGraphicalObject):
                 self._tail_299_plus,
                 _STACKCR_SIZE_REL_OFFSETS,
             )
+            propagation_delay_offset = (
+                self._tail_start_offset + _PROPAGATION_DELAY_REL_OFFSET
+            )
+            if propagation_delay_offset + 4 <= subrecord_length:
+                propagation_delay_seconds = float(
+                    struct.unpack(
+                        "<f",
+                        payload[
+                            propagation_delay_offset : propagation_delay_offset + 4
+                        ],
+                    )[0]
+                )
+                self._propagation_delay_ps = float(
+                    propagation_delay_seconds * _PICOSECONDS_PER_SECOND
+                )
+                self._propagation_delay_dirty = False
 
         cursor = subrecord_end
         return cursor - offset
@@ -896,6 +1033,10 @@ class AltiumPcbVia(PcbGraphicalObject):
             tuple(int(v) for v in self.stackcr_pct_tokens),
             tuple(int(v) for v in self.stackcr_use_percent_tokens),
             tuple(int(v) for v in self.stackcr_size_tokens),
+            float(self._propagation_delay_ps)
+            if bool(self._propagation_delay_dirty)
+            else None,
+            bool(self._propagation_delay_dirty),
             bytes(self._tail_299_plus),
         )
 
@@ -1118,6 +1259,23 @@ class AltiumPcbVia(PcbGraphicalObject):
                         int(self.stackcr_size_tokens[idx]),
                         u8=self._u8,
                     )
+            propagation_delay_offset = tail_start_offset + _PROPAGATION_DELAY_REL_OFFSET
+            if (
+                self._propagation_delay_dirty
+                or getattr(self, "_raw_subrecord1_content", None) is None
+            ):
+                for rel, value in _AD25_PROPAGATION_DELAY_TAIL_DEFAULTS.items():
+                    _write_u8(
+                        content,
+                        tail_start_offset + int(rel),
+                        int(value),
+                        u8=self._u8,
+                    )
+                _write_f32(
+                    content,
+                    propagation_delay_offset,
+                    float(self._propagation_delay_ps) * _SECONDS_PER_PICOSECOND,
+                )
             if 0 <= drill_layer_pair_type_offset < content_length:
                 _write_u8(
                     content,

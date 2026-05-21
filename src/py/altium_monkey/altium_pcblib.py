@@ -2037,6 +2037,62 @@ class AltiumPcbLib:
         log.info(f"Parsed successfully: {len(pcblib.footprints)} footprint(s)")
         return pcblib
 
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes,
+        filename: Path | str = "embedded.PcbLib",
+        debug: bool = False,
+    ) -> "AltiumPcbLib":
+        """
+        Parse a complete PcbLib from OLE bytes.
+
+        Args:
+            data: Full `.PcbLib` OLE container bytes.
+            filename: Display/source filename metadata for the parsed library.
+            debug: Enable parser debug logging.
+
+        Returns:
+            Parsed `AltiumPcbLib` instance.
+        """
+        pcblib = cls(filename)
+        with AltiumOleFile(bytes(data)) as ole:
+            cls._load_raw_library_streams(ole, pcblib)
+            section_key_map = cls._load_section_key_map(ole, pcblib, debug)
+            footprint_names = cls._load_library_data_and_footprint_names(ole, pcblib)
+            cls._parse_footprints(ole, pcblib, footprint_names, section_key_map, debug)
+            cls._load_3d_models(ole, pcblib)
+
+        log.info(f"Parsed byte-backed PcbLib: {len(pcblib.footprints)} footprint(s)")
+        return pcblib
+
+    def filename(self) -> str:
+        """
+        Return the source filename portion for this library.
+        """
+        return self.filepath.name if self.filepath is not None else ""
+
+    def footprint_count(self) -> int:
+        """
+        Return the number of parsed or authored footprints in this library.
+        """
+        return len(self.footprints)
+
+    def footprint_names(self) -> list[str]:
+        """
+        Return parsed or authored footprint names in library order.
+        """
+        return [footprint.name for footprint in self.footprints]
+
+    def find_footprint(self, name: str) -> AltiumPcbFootprint | None:
+        """
+        Return the first footprint with `name`, or `None` if absent.
+        """
+        for footprint in self.footprints:
+            if footprint.name == name:
+                return footprint
+        return None
+
     @staticmethod
     def get_footprint_names(filepath: Path) -> list[str]:
         """
@@ -2270,6 +2326,57 @@ class AltiumPcbLib:
         if self._authoring_builder is not None:
             self._sync_from_authored_library(self._authoring_builder.build())
         self._write_pcblib(output_path=Path(filepath), debug=debug)
+
+    def save_subset(
+        self,
+        filepath: Path | str,
+        footprint_names: Iterable[str],
+        debug: bool = False,
+    ) -> None:
+        """
+        Save a PcbLib containing only the named footprints.
+
+        Args:
+            filepath: Destination `.PcbLib` path.
+            footprint_names: Footprint names to include, in output order.
+            debug: Enable serialization debug logging.
+
+        Raises:
+            ValueError: If no names are provided or any requested footprint is
+                not present in this library.
+        """
+        names = list(footprint_names)
+        if not names:
+            raise ValueError("save_subset() requires at least one footprint name")
+
+        footprints_by_name = {footprint.name: footprint for footprint in self.footprints}
+        missing = [name for name in names if name not in footprints_by_name]
+        if missing:
+            raise ValueError(f"save_subset() unknown footprint: {missing[0]!r}")
+
+        from .altium_pcblib_builder import PcbLibBuilder
+
+        builder = PcbLibBuilder(profile=self._profile_for_authoring_builder())
+        model_entries = collect_pcblib_embedded_model_entries(
+            self.raw_models_data,
+            self.raw_models,
+        )
+        seen_model_signatures: set[tuple] = set()
+
+        for name in names:
+            footprint = footprints_by_name[name]
+            copy_footprint_with_models_into_builder(
+                builder,
+                footprint,
+                model_entries,
+                seen_model_signatures=seen_model_signatures,
+                height=footprint.parameters.get("HEIGHT", "0mil"),
+                description=footprint.parameters.get("DESCRIPTION", ""),
+                item_guid=footprint.parameters.get("ITEMGUID", ""),
+                revision_guid=footprint.parameters.get("REVISIONGUID", ""),
+            )
+
+        builder.build().save(filepath, debug=debug)
 
     @staticmethod
     def combine_provenance_path(filepath: Path) -> Path:

@@ -500,6 +500,44 @@ requires_extra = []
 tags = ["pcbdoc", "mutation", "pad", "smt", "through-hole", "npth", "mask-expansion"]
 
 [[examples]]
+id = "pcbdoc_add_via_ipc4761_matrix"
+title = "Add IPC-4761 via variants"
+summary = "Load a blank PcbDoc, add a labeled matrix of vias covering IPC-4761 types, tenting, and manual solder-mask expansion variants, and save the board."
+areas = ["pcbdoc", "mutation"]
+status = "ready"
+entrypoint = "pcbdoc_add_via_ipc4761_matrix/pcbdoc_add_via_ipc4761_matrix.py"
+doc = "pcbdoc_add_via_ipc4761_matrix/README.md"
+inputs = ["assets/pcbdoc/blank.PcbDoc"]
+assets = []
+outputs = [
+  "pcbdoc_add_via_ipc4761_matrix/output/pcbdoc_add_via_ipc4761_matrix.PcbDoc",
+  "pcbdoc_add_via_ipc4761_matrix/output/pcbdoc_add_via_ipc4761_matrix.json",
+]
+requires_extra = []
+tags = ["pcbdoc", "mutation", "via", "ipc4761", "tenting", "mask-expansion"]
+
+[[examples]]
+id = "pcbdoc_mutate_via_ipc4761"
+title = "Mutate PCB vias to IPC-4761 Type7"
+summary = "Copy the RT Super C1 project, find all 12 mil diameter / 6 mil hole vias, set them to IPC-4761 Type7 filling and capping, and save the mutated project."
+areas = ["pcbdoc", "mutation", "project"]
+status = "ready"
+entrypoint = "pcbdoc_mutate_via_ipc4761/pcbdoc_mutate_via_ipc4761.py"
+doc = "pcbdoc_mutate_via_ipc4761/README.md"
+inputs = [
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PrjPcb",
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PCBdoc",
+]
+assets = []
+outputs = [
+  "pcbdoc_mutate_via_ipc4761/output/rt_super_c1_type7_filled_vias/RT_SUPER_C1.PrjPcb",
+  "pcbdoc_mutate_via_ipc4761/output/rt_super_c1_type7_filled_vias/RT_SUPER_C1.PCBdoc",
+  "pcbdoc_mutate_via_ipc4761/output/mutation_summary.json",
+]
+requires_extra = []
+tags = ["pcbdoc", "mutation", "via", "ipc4761", "project"]
+
+[[examples]]
 id = "pcbdoc_add_filled_region"
 title = "Add filled PCB regions"
 summary = "Load a blank PcbDoc, add copper regions, a region with a hole, and a keepout region, and save the board."

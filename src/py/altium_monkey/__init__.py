@@ -244,8 +244,11 @@ from .altium_pcb_enums import (
     PadShape,
     PcbBarcodeKind,
     PcbBarcodeRenderMode,
+    PcbIpc4761ViaType,
     PcbTextJustification,
     PcbTextKind,
+    PcbViaStructureFeatureSide,
+    PcbViaStructureFeatureType,
 )
 from .altium_record_pcb__pad import AltiumPcbPad
 from .altium_record_pcb__region import AltiumPcbRegion
@@ -256,6 +259,11 @@ from .altium_record_pcb__net import AltiumPcbNet
 from .altium_pcb_enums import PcbNetClassKind
 from .altium_record_pcb__netclass import AltiumPcbNetClass
 from .altium_pcb_enums import PcbViaMode
+from .altium_pcb_via_structure import (
+    AltiumPcbViaStructure,
+    AltiumPcbViaStructureFeature,
+    AltiumPcbViaStructureLink,
+)
 from .altium_record_pcb__via import AltiumPcbVia
 from .altium_pcb_enums import PcbRegionKind
 from .altium_record_pcb__shapebased_region import (
@@ -439,6 +447,7 @@ __all__ = [
     "PcbTextKind",
     "PcbBarcodeKind",
     "PcbBarcodeRenderMode",
+    "PcbIpc4761ViaType",
     "PcbTextJustification",
     "AltiumPcbPad",
     "AltiumPcbText",
@@ -452,6 +461,11 @@ __all__ = [
     "PcbNetClassKind",
     "AltiumPcbVia",
     "PcbViaMode",
+    "PcbViaStructureFeatureType",
+    "PcbViaStructureFeatureSide",
+    "AltiumPcbViaStructure",
+    "AltiumPcbViaStructureFeature",
+    "AltiumPcbViaStructureLink",
     "AltiumPcbShapeBasedRegion",
     "PcbRegionKind",
     "PcbExtendedVertex",

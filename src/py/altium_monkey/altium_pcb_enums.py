@@ -238,6 +238,42 @@ class PcbViaMode(IntEnum):
     RESERVED_3 = 3
 
 
+class PcbIpc4761ViaType(IntEnum):
+    """Altium IPC-4761 via-protection type."""
+
+    NONE = 0
+    TYPE_1A_TENTING = 1
+    TYPE_1B_TENTING = 2
+    TYPE_2A_TENTING_AND_COVERING = 3
+    TYPE_2B_TENTING_AND_COVERING = 4
+    TYPE_3A_PLUGGING = 5
+    TYPE_3B_PLUGGING = 6
+    TYPE_4A_PLUGGING_AND_COVERING = 7
+    TYPE_4B_PLUGGING_AND_COVERING = 8
+    TYPE_5_FILLING = 9
+    TYPE_6A_FILLING_AND_COVERING = 10
+    TYPE_6B_FILLING_AND_COVERING = 11
+    TYPE_7_FILLING_AND_CAPPING = 12
+
+
+class PcbViaStructureFeatureType(IntEnum):
+    """Altium IPC-4761 via-structure feature type."""
+
+    TENTING = 0
+    COVERING = 1
+    PLUGGING = 2
+    FILLING = 3
+    CAPPING = 4
+
+
+class PcbViaStructureFeatureSide(IntEnum):
+    """Altium IPC-4761 via-structure feature side."""
+
+    TOP = 0
+    BOTTOM = 1
+    BOTH = 2
+
+
 class PcbNetClassKind(IntEnum):
     """PCB net-class family kind."""
 

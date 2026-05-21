@@ -37,6 +37,19 @@ from .altium_pcb_custom_shapes import (
     serialize_custom_shapes_stream,
 )
 from .altium_pcb_rule import AltiumPcbRule
+from .altium_pcb_via_structure import (
+    AltiumPcbViaStructure,
+    AltiumPcbViaStructureLink,
+    VIA_STRUCTURE_STREAM_NAMES,
+    attach_via_structures_to_vias,
+    build_via_structure_model_for_vias,
+    via_model_owns_structure_streams,
+    serialize_via_structure_links_stream,
+    serialize_via_structure_manager_stream,
+    parse_via_structure_links_stream,
+    parse_via_structure_manager_stream,
+    via_structure_header_count,
+)
 from .altium_record_pcb__board_region import AltiumPcbBoardRegion
 from .altium_record_pcb__arc import AltiumPcbArc
 from .altium_record_pcb__fill import AltiumPcbFill
@@ -59,6 +72,7 @@ from .altium_pcb_enums import (
     PcbBarcodeKind,
     PcbBarcodeRenderMode,
     PcbBodyProjection,
+    PcbIpc4761ViaType,
     PcbRegionKind,
     PcbTextJustification,
     PcbTextKind,
@@ -958,6 +972,11 @@ class AltiumPcbDoc:
             AltiumPcbExtendedPrimitiveInformation
         ] = []
         self.custom_shapes: list[AltiumPcbCustomShapeRecord] = []
+        self.via_structures: list[AltiumPcbViaStructure] = []
+        self.via_structure_links: list[AltiumPcbViaStructureLink] = []
+        self.via_structure_manager_count: int = 0
+        self.via_structure_link_count: int = 0
+        self._via_structure_parse_failed: bool = False
 
         # Binary primitive geometry
         self.pads: list[AltiumPcbPad] = []
@@ -1020,6 +1039,10 @@ class AltiumPcbDoc:
         self.regions = builder.regions
         self.shapebased_regions = builder.shapebased_regions
         self.vias = builder.vias
+        self.via_structures = list(getattr(builder, "via_structures", []))
+        self.via_structure_links = list(getattr(builder, "via_structure_links", []))
+        self.via_structure_manager_count = len(self.via_structures)
+        self.via_structure_link_count = len(self.via_structure_links)
         self.models = builder.models
         self.component_bodies = builder.component_bodies
         self.shapebased_component_bodies = builder.shapebased_component_bodies
@@ -2035,6 +2058,14 @@ class AltiumPcbDoc:
         layer_start: int | PcbLayer = PcbLayer.TOP,
         layer_end: int | PcbLayer = PcbLayer.BOTTOM,
         net: str | None = None,
+        ipc4761_via_type: int | PcbIpc4761ViaType = PcbIpc4761ViaType.NONE,
+        propagation_delay_ps: float | None = None,
+        is_tent_top: bool = False,
+        is_tent_bottom: bool = False,
+        is_test_fab_top: bool = False,
+        is_test_fab_bottom: bool = False,
+        is_assy_testpoint_top: bool = False,
+        is_assy_testpoint_bottom: bool = False,
     ) -> AltiumPcbVia:
         """
         Add a via using mil-unit center, diameter, and hole size.
@@ -2046,6 +2077,17 @@ class AltiumPcbDoc:
             layer_start: Start layer as `PcbLayer` or native layer id.
             layer_end: End layer as `PcbLayer` or native layer id.
             net: Optional net name. The net is created if needed.
+            ipc4761_via_type: Optional IPC-4761 via-protection type.
+            propagation_delay_ps: Optional via propagation delay in picoseconds.
+            is_tent_top: Top-side solder-mask tenting flag. Authored vias with
+                tenting use AD25-compatible manual solder-mask expansion defaults.
+            is_tent_bottom: Bottom-side solder-mask tenting flag. Authored vias
+                with tenting use AD25-compatible manual solder-mask expansion
+                defaults.
+            is_test_fab_top: Top-side fabrication testpoint flag.
+            is_test_fab_bottom: Bottom-side fabrication testpoint flag.
+            is_assy_testpoint_top: Top-side assembly testpoint flag.
+            is_assy_testpoint_bottom: Bottom-side assembly testpoint flag.
 
         Returns:
             The authored `AltiumPcbVia` record.
@@ -2058,6 +2100,14 @@ class AltiumPcbDoc:
             layer_start=layer_start,
             layer_end=layer_end,
             net=net,
+            ipc4761_via_type=ipc4761_via_type,
+            propagation_delay_ps=propagation_delay_ps,
+            is_tent_top=is_tent_top,
+            is_tent_bottom=is_tent_bottom,
+            is_test_fab_top=is_test_fab_top,
+            is_test_fab_bottom=is_test_fab_bottom,
+            is_assy_testpoint_top=is_assy_testpoint_top,
+            is_assy_testpoint_bottom=is_assy_testpoint_bottom,
         )
         self._mirror_authoring_builder_state()
         return self.vias[-1]
@@ -2137,6 +2187,33 @@ class AltiumPcbDoc:
 
         return pcbdoc
 
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes,
+        filename: Path | str = "embedded.PcbDoc",
+        verbose: bool = False,
+        parse_geometry: bool = True,
+    ) -> "AltiumPcbDoc":
+        """
+        Parse a PcbDoc from OLE bytes.
+
+        Args:
+            data: Full `.PcbDoc` OLE container bytes.
+            filename: Display/source filename metadata for the parsed document.
+            verbose: If True, print detailed parsing info.
+            parse_geometry: Reserved compatibility flag. Geometry parsing is
+                currently always enabled.
+
+        Returns:
+            AltiumPcbDoc instance.
+        """
+        del parse_geometry
+        pcbdoc = cls(filename)
+        with AltiumOleFile(bytes(data)) as ole:
+            pcbdoc._parse_open_ole(ole, verbose=verbose)
+        return pcbdoc
+
     def _parse(self, verbose: bool = False) -> None:
         """
         Parse PcbDoc file streams.
@@ -2147,30 +2224,36 @@ class AltiumPcbDoc:
         ole = AltiumOleFile(str(self.filepath))
 
         try:
-            string_table, designator_map = self._parse_text_lookup_tables(
-                ole, verbose=verbose
-            )
-            self._parse_board_metadata(ole, verbose=verbose)
-            parameter_map = self._parse_component_parameter_map(ole, verbose=verbose)
-            self._parse_component_and_text_record_streams(
-                ole,
-                designator_map=designator_map,
-                parameter_map=parameter_map,
-                verbose=verbose,
-            )
-            self._parse_additional_metadata_streams(ole, verbose=verbose)
-            self._parse_binary_primitive_streams(
-                ole, string_table=string_table, verbose=verbose
-            )
-            self._finalize_parsed_board_geometry(verbose=verbose)
-
-            resolve_pcbdoc_custom_pad_shapes(self)
-            if verbose:
-                log.info("  Storing unparsed streams for passthrough...")
-            self._store_raw_streams(ole, verbose=verbose)
-
+            self._parse_open_ole(ole, verbose=verbose)
         finally:
             ole.close()
+
+    def _parse_open_ole(self, ole: AltiumOleFile, *, verbose: bool) -> None:
+        """
+        Parse an already-open PcbDoc OLE container.
+        """
+        string_table, designator_map = self._parse_text_lookup_tables(
+            ole, verbose=verbose
+        )
+        self._parse_board_metadata(ole, verbose=verbose)
+        parameter_map = self._parse_component_parameter_map(ole, verbose=verbose)
+        self._parse_component_and_text_record_streams(
+            ole,
+            designator_map=designator_map,
+            parameter_map=parameter_map,
+            verbose=verbose,
+        )
+        self._parse_additional_metadata_streams(ole, verbose=verbose)
+        self._parse_binary_primitive_streams(
+            ole, string_table=string_table, verbose=verbose
+        )
+        self._parse_via_structure_streams(ole, verbose=verbose)
+        self._finalize_parsed_board_geometry(verbose=verbose)
+
+        resolve_pcbdoc_custom_pad_shapes(self)
+        if verbose:
+            log.info("  Storing unparsed streams for passthrough...")
+        self._store_raw_streams(ole, verbose=verbose)
 
     def _parse_text_lookup_tables(
         self,
@@ -2813,6 +2896,49 @@ class AltiumPcbDoc:
         if verbose:
             log.info(f"    Parsed {via_count} vias")
 
+    def _parse_via_structure_streams(
+        self, ole: AltiumOleFile, verbose: bool = False
+    ) -> None:
+        """
+        Parse IPC-4761 via-structure side tables and attach them to VIAs.
+        """
+        if not ole.exists(["ViaStructureManager", "Data"]):
+            return
+        if not ole.exists(["ViaStructures", "Data"]):
+            return
+
+        try:
+            if ole.exists(["ViaStructureManager", "Header"]):
+                self.via_structure_manager_count = via_structure_header_count(
+                    ole.openstream(["ViaStructureManager", "Header"])
+                )
+            if ole.exists(["ViaStructures", "Header"]):
+                self.via_structure_link_count = via_structure_header_count(
+                    ole.openstream(["ViaStructures", "Header"])
+                )
+            structures = parse_via_structure_manager_stream(
+                ole.openstream(["ViaStructureManager", "Data"])
+            )
+            links = parse_via_structure_links_stream(
+                ole.openstream(["ViaStructures", "Data"])
+            )
+        except Exception as exc:
+            self._via_structure_parse_failed = True
+            if verbose:
+                log.warning("Failed to parse via-structure streams: %s", exc)
+            return
+
+        self.via_structures = list(structures)
+        self.via_structure_links = list(links)
+        self._via_structure_parse_failed = False
+        attach_via_structures_to_vias(self.vias, structures, links)
+        if verbose:
+            log.info(
+                "    Parsed %d via structures and %d via-structure links",
+                len(self.via_structures),
+                len(self.via_structure_links),
+            )
+
     def _parse_shapebasedregions6(
         self, ole: AltiumOleFile, verbose: bool = False
     ) -> None:
@@ -3170,10 +3296,63 @@ class AltiumPcbDoc:
         """
         Write untouched OLE streams back into the output document.
         """
+        owns_via_structure_streams = via_model_owns_structure_streams(
+            self.vias,
+            via_structures=self.via_structures,
+            via_structure_links=self.via_structure_links,
+            parse_failed=self._via_structure_parse_failed,
+        )
         for stream_name, data in self._raw_streams.items():
+            if owns_via_structure_streams and stream_name in VIA_STRUCTURE_STREAM_NAMES:
+                continue
             writer.add_stream(stream_name, data)
             if verbose:
                 log.info(f"  Wrote passthrough stream: {stream_name}")
+
+    def _write_via_structure_streams(
+        self, writer: AltiumOleWriter, *, verbose: bool
+    ) -> None:
+        """
+        Write IPC-4761 via-structure side-table streams from the VIA model.
+        """
+        if not via_model_owns_structure_streams(
+            self.vias,
+            via_structures=self.via_structures,
+            via_structure_links=self.via_structure_links,
+            parse_failed=self._via_structure_parse_failed,
+        ):
+            return
+        structures, links = build_via_structure_model_for_vias(
+            self.vias,
+            existing_structures=self.via_structures,
+        )
+        if not structures and not links:
+            return
+        self.via_structures = structures
+        self.via_structure_links = links
+        self.via_structure_manager_count = len(structures)
+        self.via_structure_link_count = len(links)
+        if verbose:
+            log.info(
+                "  Writing IPC-4761 via structures (%d structures, %d links)...",
+                len(structures),
+                len(links),
+            )
+        writer.add_stream(
+            "ViaStructureManager/Header",
+            len(structures).to_bytes(4, byteorder="little"),
+        )
+        writer.add_stream(
+            "ViaStructureManager/Data",
+            serialize_via_structure_manager_stream(structures),
+        )
+        writer.add_stream(
+            "ViaStructures/Header",
+            len(links).to_bytes(4, byteorder="little"),
+        )
+        writer.add_stream(
+            "ViaStructures/Data", serialize_via_structure_links_stream(links)
+        )
 
     def _write_basic_primitive_streams(
         self, writer: AltiumOleWriter, *, verbose: bool
@@ -3355,6 +3534,7 @@ class AltiumPcbDoc:
         self._write_component_body_streams(writer, verbose=verbose)
         self._write_model_streams(writer, verbose=verbose)
         self._write_support_streams(writer, verbose=verbose)
+        self._write_via_structure_streams(writer, verbose=verbose)
 
         # Write to file
         writer.write(str(filepath))

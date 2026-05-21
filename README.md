@@ -45,8 +45,9 @@ Common workflows:
 4. extract SchLib and PcbLib data from projects
 5. render schematic and PCB SVGs
 6. inspect PCB layers, drills, board outlines, nets, and net classes
-7. extract embedded fonts and 3D models
-8. generate project containers and run associated OutJobs
+7. author and mutate PCB vias, including IPC-4761 protection metadata
+8. extract embedded fonts and 3D models
+9. generate project containers and run associated OutJobs
 
 ## Install
 
@@ -147,12 +148,17 @@ The schematic side uses a higher-level object system:
 3. Structural mutations should go through `add_object(...)`,
    `insert_object(...)`, or `remove_object(...)`.
 
-The PCB side is currently helper-oriented:
+The PCB document side is helper-oriented rather than `ObjectCollection`-based:
 
 1. `AltiumPcbDoc` and `AltiumPcbFootprint` expose high-level `add_*` methods.
-2. Parsed primitives are available through typed record lists.
-3. Direct record-list mutation is possible but should be treated as advanced
-   usage until the PcbDoc object API is expanded.
+2. `AltiumPcbDoc` covers common authoring workflows including board setup,
+   nets, primitives, components, footprint insertion, component bodies, and
+   embedded 3D model placement. Via support includes IPC-4761 type metadata,
+   feature rows, propagation delay, tenting, and testpoint flags.
+3. Parsed primitives are available through typed record lists such as
+   `pcbdoc.tracks`, `pcbdoc.pads`, `pcbdoc.vias`, and `pcbdoc.components`.
+4. Direct record-list mutation is possible but should be treated as advanced
+   usage until PcbDoc grows a generic object API.
 
 See [API patterns](docs/api_patterns/index.md) for units, object ownership,
 public vs careful APIs, and internal Altium unit guidance.
@@ -172,8 +178,9 @@ an issue with the smallest representative `.SchDoc`, `.SchLib`, `.PcbDoc`, or
 
 Known release boundaries include:
 
-1. PcbDoc does not yet have a generic `ObjectCollection`-style mutation API.
-2. PcbDoc does not yet have a public object deletion API.
+1. PcbDoc does not yet use `ObjectCollection`; it remains a typed-list plus
+   helper-oriented API.
+2. PcbDoc does not yet have a public generic object deletion API.
 3. IntLib support is extract-only, with fallback source-stream extraction when
    component cross-reference metadata cannot be parsed.
 4. Variant processing supports DNP handling and parameter overrides; alternate

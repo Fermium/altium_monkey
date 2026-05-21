@@ -1395,6 +1395,108 @@ def test_pcbdoc_add_primitive_examples_write_expected_records(
     assert keepout.keepout_restrictions == 31
 
 
+def test_pcbdoc_via_ipc4761_examples_write_expected_via_state(
+    check_examples_root: Path,
+) -> None:
+    from altium_monkey import (
+        AltiumPcbDoc,
+        PcbIpc4761ViaType,
+        PcbViaStructureFeatureSide,
+        PcbViaStructureFeatureType,
+    )
+
+    for example_id in (
+        "pcbdoc_add_via_ipc4761_matrix",
+        "pcbdoc_mutate_via_ipc4761",
+    ):
+        example = next(item for item in _load_examples() if item["id"] == example_id)
+        result = _run_example_entrypoint(example, check_examples_root)
+        assert result.returncode == 0, result.stderr
+
+    matrix_root = check_examples_root / "pcbdoc_add_via_ipc4761_matrix" / "output"
+    matrix_doc = AltiumPcbDoc.from_file(
+        matrix_root / "pcbdoc_add_via_ipc4761_matrix.PcbDoc"
+    )
+    assert len(matrix_doc.vias) == 20
+    assert {int(via.ipc4761_via_type) for via in matrix_doc.vias} == set(range(13))
+    assert (
+        sum(
+            int(via.ipc4761_via_type)
+            == int(PcbIpc4761ViaType.TYPE_7_FILLING_AND_CAPPING)
+            for via in matrix_doc.vias
+        )
+        == 2
+    )
+    assert any(via.is_tent_top and not via.is_tent_bottom for via in matrix_doc.vias)
+    assert any(via.is_tent_bottom and not via.is_tent_top for via in matrix_doc.vias)
+    assert any(
+        via.soldermask_expansion_manual and via.soldermask_expansion_front == 20000
+        for via in matrix_doc.vias
+    )
+
+    epoxy_via = next(
+        via
+        for via in matrix_doc.vias
+        if (
+            via.get_ipc4761_feature(PcbViaStructureFeatureType.FILLING) is not None
+            and via.get_ipc4761_feature(PcbViaStructureFeatureType.FILLING).material
+            == "EPOXY"
+        )
+    )
+    filling = epoxy_via.get_ipc4761_feature(PcbViaStructureFeatureType.FILLING)
+    capping = epoxy_via.get_ipc4761_feature(PcbViaStructureFeatureType.CAPPING)
+    assert filling is not None
+    assert capping is not None
+    assert int(filling.side) == int(PcbViaStructureFeatureSide.BOTH)
+    assert capping.material == "COPPER"
+
+    matrix_manifest = json.loads(
+        (matrix_root / "pcbdoc_add_via_ipc4761_matrix.json").read_text(encoding="utf-8")
+    )
+    assert any(
+        entry["label"] == "Type7 epoxy"
+        for entry in matrix_manifest["tenting_and_mask_entries"]
+    )
+
+    mutation_root = check_examples_root / "pcbdoc_mutate_via_ipc4761" / "output"
+    mutation_doc = AltiumPcbDoc.from_file(
+        mutation_root / "rt_super_c1_type7_filled_vias" / "RT_SUPER_C1.PCBdoc"
+    )
+    matched_vias = [
+        via
+        for via in mutation_doc.vias
+        if via.diameter == 120000 and via.hole_size == 60000
+    ]
+    assert len(matched_vias) == 91
+    assert all(
+        via.ipc4761_via_type == PcbIpc4761ViaType.TYPE_7_FILLING_AND_CAPPING
+        for via in matched_vias
+    )
+    assert all(
+        via.get_ipc4761_feature(PcbViaStructureFeatureType.FILLING) is not None
+        and via.get_ipc4761_feature(PcbViaStructureFeatureType.FILLING).material
+        == "EPOXY"
+        for via in matched_vias
+    )
+    assert all(
+        via.get_ipc4761_feature(PcbViaStructureFeatureType.CAPPING) is not None
+        and via.get_ipc4761_feature(PcbViaStructureFeatureType.CAPPING).material
+        == "COPPER"
+        for via in matched_vias
+    )
+    matched_via_ids = {id(via) for via in matched_vias}
+    assert all(
+        int(via.ipc4761_via_type) == int(PcbIpc4761ViaType.NONE)
+        for via in mutation_doc.vias
+        if id(via) not in matched_via_ids
+    )
+
+    mutation_summary = json.loads(
+        (mutation_root / "mutation_summary.json").read_text(encoding="utf-8")
+    )
+    assert mutation_summary["matched_via_count"] == len(matched_vias)
+
+
 def test_pcbdoc_insert_nets_route_writes_routed_board(
     check_examples_root: Path,
 ) -> None:

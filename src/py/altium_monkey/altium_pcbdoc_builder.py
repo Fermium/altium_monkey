@@ -29,7 +29,19 @@ from .altium_pcb_stream_helpers import format_mil_value as _format_mil_value
 from .altium_pcb_stream_helpers import PcbKeyValueTextEntryMixin
 from .altium_ole import AltiumOleFile, AltiumOleWriter
 from .altium_board import AltiumBoard, AltiumBoardOutline, BoardOutlineVertex
-from .altium_pcb_enums import PcbGuidType
+from .altium_pcb_enums import PcbGuidType, PcbIpc4761ViaType
+from .altium_pcb_via_structure import (
+    AltiumPcbViaStructure,
+    AltiumPcbViaStructureLink,
+    VIA_STRUCTURE_STREAM_NAMES,
+    attach_via_structures_to_vias,
+    build_via_structure_model_for_vias,
+    via_model_owns_structure_streams,
+    parse_via_structure_links_stream,
+    parse_via_structure_manager_stream,
+    serialize_via_structure_links_stream,
+    serialize_via_structure_manager_stream,
+)
 from .altium_record_pcb__board_region import AltiumPcbBoardRegion
 from .altium_record_pcb__component_body import AltiumPcbComponentBody
 from .altium_record_pcb__model import AltiumPcbModel
@@ -2863,6 +2875,21 @@ class PcbDocBuildProfile:
             ole.close()
 
     @classmethod
+    def from_bytes(cls, data: bytes) -> "PcbDocBuildProfile":
+        ole = AltiumOleFile(bytes(data))
+        try:
+            raw_streams = {
+                "/".join(entry): ole.openstream(entry) for entry in ole.listdir()
+            }
+            root = ole.root
+            root_clsid = getattr(root, "clsid", b"\x00" * 16) or (b"\x00" * 16)
+            if not isinstance(root_clsid, bytes):
+                root_clsid = bytes(root_clsid)
+            return cls.from_raw_streams(raw_streams, root_clsid=root_clsid)
+        finally:
+            ole.close()
+
+    @classmethod
     def default(cls) -> "PcbDocBuildProfile":
         return cls(
             raw_streams={},
@@ -2912,8 +2939,14 @@ class PcbDocBuilder:
     reproduces it without going through `AltiumPcbDoc.save()`.
     """
 
-    def __init__(self, profile: PcbDocBuildProfile | None = None) -> None:
+    def __init__(
+        self,
+        profile: PcbDocBuildProfile | None = None,
+        *,
+        filepath: str | Path | None = None,
+    ) -> None:
         self.profile = profile or PcbDocBuildProfile.default()
+        self._filepath = Path(filepath) if filepath else Path("empty.PcbDoc")
         self._streams: dict[str, bytes] = dict(self.profile.raw_streams)
         self.file_header_data = (
             self.profile.file_header_data
@@ -3055,6 +3088,25 @@ class PcbDocBuilder:
         self.vias = list(
             parse_via_stream(self.profile.raw_streams.get("Vias6/Data", b""))
         )
+        self.via_structures: list[AltiumPcbViaStructure] = []
+        self.via_structure_links: list[AltiumPcbViaStructureLink] = []
+        self._via_structure_parse_failed = False
+        if (
+            "ViaStructureManager/Data" in self.profile.raw_streams
+            and "ViaStructures/Data" in self.profile.raw_streams
+        ):
+            try:
+                structures = parse_via_structure_manager_stream(
+                    self.profile.raw_streams["ViaStructureManager/Data"]
+                )
+                links = parse_via_structure_links_stream(
+                    self.profile.raw_streams["ViaStructures/Data"]
+                )
+                self.via_structures = list(structures)
+                self.via_structure_links = list(links)
+                attach_via_structures_to_vias(self.vias, structures, links)
+            except Exception:
+                self._via_structure_parse_failed = True
         self.models = list(
             parse_model_records_from_bytes(
                 self.profile.raw_streams.get("ModelsNoEmbed/Data")
@@ -3094,12 +3146,137 @@ class PcbDocBuilder:
         self._authored_primitive_guids: list[tuple[PcbGuidType, uuid.UUID]] = []
         self._authored_pad_unique_ids: list[str] = []
 
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes,
+        filename: str | Path = "embedded.PcbDoc",
+    ) -> "PcbDocBuilder":
+        display_path = Path(filename) if filename else Path("embedded.PcbDoc")
+        return cls(PcbDocBuildProfile.from_bytes(data), filepath=display_path)
+
+    @staticmethod
+    def _normalize_stream_name(stream_name: str) -> str:
+        return str(stream_name).replace("\\", "/")
+
+    def filepath(self) -> Path:
+        return self._filepath
+
+    def filename(self) -> str:
+        return self._filepath.name
+
+    def is_open(self) -> bool:
+        return True
+
+    def stream_names(self) -> list[str]:
+        return sorted(self.build_streams())
+
+    def has_stream(self, stream_name: str) -> bool:
+        return self._normalize_stream_name(stream_name) in self.build_streams()
+
+    def stream_size(self, stream_name: str) -> int:
+        normalized = self._normalize_stream_name(stream_name)
+        streams = self.build_streams()
+        if normalized not in streams:
+            raise KeyError(f"PcbDocBuilder stream not found: {normalized}")
+        return len(streams[normalized])
+
+    def read_stream(self, stream_name: str) -> bytes:
+        normalized = self._normalize_stream_name(stream_name)
+        streams = self.build_streams()
+        if normalized not in streams:
+            raise KeyError(f"PcbDocBuilder stream not found: {normalized}")
+        return bytes(streams[normalized])
+
     def set_stream(self, stream_name: str, data: bytes) -> "PcbDocBuilder":
-        self._streams[str(stream_name).replace("\\", "/")] = bytes(data)
+        self._streams[self._normalize_stream_name(stream_name)] = bytes(data)
         return self
 
     def remove_stream(self, stream_name: str) -> "PcbDocBuilder":
-        self._streams.pop(str(stream_name).replace("\\", "/"), None)
+        self._streams.pop(self._normalize_stream_name(stream_name), None)
+        return self
+
+    def set_stream_same_size(
+        self,
+        stream_name: str,
+        data: bytes,
+    ) -> "PcbDocBuilder":
+        normalized = self._normalize_stream_name(stream_name)
+        payload = bytes(data)
+        expected_size = self.stream_size(normalized)
+        if len(payload) != expected_size:
+            raise ValueError("PcbDocBuilder stream replacement must keep same size")
+        self.set_stream(normalized, payload)
+        return self
+
+    def set_pad_via_library_name(self, value: str) -> "PcbDocBuilder":
+        self.pad_via_library_data = self.pad_via_library_data.with_library_name(value)
+        return self
+
+    def set_pad_via_library_display_units(self, value: int) -> "PcbDocBuilder":
+        self.pad_via_library_data = self.pad_via_library_data.with_display_units(value)
+        return self
+
+    def set_pad_via_library_cache_display_units(self, value: int) -> "PcbDocBuilder":
+        self.pad_via_library_cache_data = (
+            self.pad_via_library_cache_data.with_display_units(value)
+        )
+        return self
+
+    def set_constraint_manager_token(self, token: str) -> "PcbDocBuilder":
+        self.constraint_manager_data = self.constraint_manager_data.with_token(token)
+        return self
+
+    def set_signal_class_name(self, value: str) -> "PcbDocBuilder":
+        self.signal_classes_data = self.signal_classes_data.with_name(value)
+        return self
+
+    def set_signal_class_kind(self, value: int) -> "PcbDocBuilder":
+        self.signal_classes_data = self.signal_classes_data.with_kind(value)
+        return self
+
+    def set_signal_class_unique_id(self, value: str) -> "PcbDocBuilder":
+        self.signal_classes_data = self.signal_classes_data.with_unique_id(value)
+        return self
+
+    def set_design_rule_checker_max_violation_count(
+        self, value: int
+    ) -> "PcbDocBuilder":
+        self.design_rule_checker_options_data = (
+            self.design_rule_checker_options_data.with_max_violation_count(value)
+        )
+        return self
+
+    def set_design_rule_checker_verify_shorting_copper(
+        self, value: bool
+    ) -> "PcbDocBuilder":
+        self.design_rule_checker_options_data = (
+            self.design_rule_checker_options_data.with_verify_shorting_copper(value)
+        )
+        return self
+
+    def set_pin_swap_crossover_ratio(self, value: int) -> "PcbDocBuilder":
+        self.pin_swap_options_data = self.pin_swap_options_data.with_crossover_ratio(
+            value
+        )
+        return self
+
+    def set_pin_swap_via_penalty_state(self, value: bool) -> "PcbDocBuilder":
+        self.pin_swap_options_data = self.pin_swap_options_data.with_via_penalty_state(
+            value
+        )
+        return self
+
+    def set_advanced_placer_place_large_clear(self, value: str) -> "PcbDocBuilder":
+        self.advanced_placer_options_data = (
+            self.advanced_placer_options_data.with_place_large_clear(value)
+        )
+        return self
+
+    def set_advanced_placer_use_advanced_place(self, value: bool) -> "PcbDocBuilder":
+        self.advanced_placer_options_data = (
+            self.advanced_placer_options_data.with_place_use_advanced_place(value)
+        )
         return self
 
     def set_outline_vertices_mils(
@@ -3656,6 +3833,14 @@ class PcbDocBuilder:
         layer_start: int | PcbLayer = PcbLayer.TOP,
         layer_end: int | PcbLayer = PcbLayer.BOTTOM,
         net: str | None = None,
+        ipc4761_via_type: int | PcbIpc4761ViaType = PcbIpc4761ViaType.NONE,
+        propagation_delay_ps: float | None = None,
+        is_tent_top: bool = False,
+        is_tent_bottom: bool = False,
+        is_test_fab_top: bool = False,
+        is_test_fab_bottom: bool = False,
+        is_assy_testpoint_top: bool = False,
+        is_assy_testpoint_bottom: bool = False,
         component_index: int | None = None,
     ) -> "PcbDocBuilder":
         via = build_authored_via(
@@ -3665,6 +3850,21 @@ class PcbDocBuilder:
             layer_start=layer_start,
             layer_end=layer_end,
         )
+        via.ipc4761_via_type = PcbIpc4761ViaType(int(ipc4761_via_type))
+        if propagation_delay_ps is not None:
+            via.propagation_delay_ps = float(propagation_delay_ps)
+        via.is_tent_top = bool(is_tent_top)
+        via.is_tent_bottom = bool(is_tent_bottom)
+        if via.is_tent_top or via.is_tent_bottom:
+            via.solder_mask_expansion_mode = 2  # eMaskExpansionMode_Manual
+            via.soldermask_expansion_front = 40000
+            via.soldermask_expansion_back = 40000
+            via._has_soldermask_expansion_front = True
+            via._has_soldermask_expansion_back = True
+        via.is_test_fab_top = bool(is_test_fab_top)
+        via.is_test_fab_bottom = bool(is_test_fab_bottom)
+        via.is_assy_testpoint_top = bool(is_assy_testpoint_top)
+        via.is_assy_testpoint_bottom = bool(is_assy_testpoint_bottom)
         via.component_index = self._normalize_component_index(component_index)
         if net:
             self.add_net(net, preferred_width_mils=diameter_mils)
@@ -3877,6 +4077,31 @@ class PcbDocBuilder:
                 )
             )
         return PcbDocPrimitiveGuidsData(records=tuple(records))
+
+    def _apply_via_structure_streams(self, streams: dict[str, bytes]) -> None:
+        if not via_model_owns_structure_streams(
+            self.vias,
+            via_structures=self.via_structures,
+            via_structure_links=self.via_structure_links,
+            parse_failed=self._via_structure_parse_failed,
+        ):
+            return
+        for stream_name in VIA_STRUCTURE_STREAM_NAMES:
+            streams.pop(stream_name, None)
+        structures, links = build_via_structure_model_for_vias(
+            self.vias,
+            existing_structures=self.via_structures,
+        )
+        if not structures and not links:
+            return
+        self.via_structures = structures
+        self.via_structure_links = links
+        streams["ViaStructureManager/Header"] = struct.pack("<I", len(structures))
+        streams["ViaStructureManager/Data"] = serialize_via_structure_manager_stream(
+            structures
+        )
+        streams["ViaStructures/Header"] = struct.pack("<I", len(links))
+        streams["ViaStructures/Data"] = serialize_via_structure_links_stream(links)
 
     def build_streams(self) -> dict[str, bytes]:
         streams = dict(self._streams)
@@ -4141,6 +4366,7 @@ class PcbDocBuilder:
         streams["Arcs6/Data"] = build_arc_stream(self.arcs)
         streams["Tracks6/Header"] = struct.pack("<I", len(self.tracks))
         streams["Tracks6/Data"] = build_track_stream(self.tracks)
+        self._apply_via_structure_streams(streams)
         return streams
 
     def save(self, filepath: Path) -> Path:
