@@ -1991,6 +1991,8 @@ class AltiumPcbDoc:
         slot_rotation_degrees: float = 0.0,
         solder_mask_expansion_mils: float | None = None,
         paste_mask_expansion_mils: float | None = None,
+        hole_positive_tolerance_mils: float | None = None,
+        hole_negative_tolerance_mils: float | None = None,
     ) -> AltiumPcbPad:
         """
         Add a pad using mil-unit center and size.
@@ -2024,6 +2026,12 @@ class AltiumPcbDoc:
                 in mils.
             paste_mask_expansion_mils: Optional manual paste-mask expansion in
                 mils.
+            hole_positive_tolerance_mils: Optional upper drill-hole tolerance
+                in mils. If either tolerance is supplied, an omitted side is
+                written as 0 mil.
+            hole_negative_tolerance_mils: Optional lower drill-hole tolerance
+                magnitude in mils. If either tolerance is supplied, an omitted
+                side is written as 0 mil.
 
         Returns:
             The authored `AltiumPcbPad` record.
@@ -2045,6 +2053,8 @@ class AltiumPcbDoc:
             slot_rotation_degrees=slot_rotation_degrees,
             solder_mask_expansion_mils=solder_mask_expansion_mils,
             paste_mask_expansion_mils=paste_mask_expansion_mils,
+            hole_positive_tolerance_mils=hole_positive_tolerance_mils,
+            hole_negative_tolerance_mils=hole_negative_tolerance_mils,
         )
         self._mirror_authoring_builder_state()
         return self.pads[-1]
@@ -2060,6 +2070,8 @@ class AltiumPcbDoc:
         net: str | None = None,
         ipc4761_via_type: int | PcbIpc4761ViaType = PcbIpc4761ViaType.NONE,
         propagation_delay_ps: float | None = None,
+        hole_positive_tolerance_mils: float | None = None,
+        hole_negative_tolerance_mils: float | None = None,
         is_tent_top: bool = False,
         is_tent_bottom: bool = False,
         is_test_fab_top: bool = False,
@@ -2079,6 +2091,12 @@ class AltiumPcbDoc:
             net: Optional net name. The net is created if needed.
             ipc4761_via_type: Optional IPC-4761 via-protection type.
             propagation_delay_ps: Optional via propagation delay in picoseconds.
+            hole_positive_tolerance_mils: Optional upper drill-hole tolerance
+                in mils. If either tolerance is supplied, an omitted side is
+                written as 0 mil.
+            hole_negative_tolerance_mils: Optional lower drill-hole tolerance
+                magnitude in mils. If either tolerance is supplied, an omitted
+                side is written as 0 mil.
             is_tent_top: Top-side solder-mask tenting flag. Authored vias with
                 tenting use AD25-compatible manual solder-mask expansion defaults.
             is_tent_bottom: Bottom-side solder-mask tenting flag. Authored vias
@@ -2102,6 +2120,8 @@ class AltiumPcbDoc:
             net=net,
             ipc4761_via_type=ipc4761_via_type,
             propagation_delay_ps=propagation_delay_ps,
+            hole_positive_tolerance_mils=hole_positive_tolerance_mils,
+            hole_negative_tolerance_mils=hole_negative_tolerance_mils,
             is_tent_top=is_tent_top,
             is_tent_bottom=is_tent_bottom,
             is_test_fab_top=is_test_fab_top,

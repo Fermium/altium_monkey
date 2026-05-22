@@ -15,6 +15,11 @@ from .altium_pcb_enums import (
     PcbViaStructureFeatureType,
 )
 from .altium_pcb_mask_paste_rules import get_via_mask_expansion_iu
+from .altium_pcb_hole_tolerance import (
+    PCB_HOLE_TOLERANCE_UNSET,
+    hole_tolerance_internal_from_mils,
+    hole_tolerance_mils_from_internal,
+)
 from .altium_record_types import PcbGraphicalObject, PcbLayer, PcbRecordType
 
 if TYPE_CHECKING:
@@ -132,8 +137,12 @@ class AltiumPcbVia(PcbGraphicalObject):
         tail_signature_bytes: 16-byte blob between unique_id_bytes and tolerances
         union_index: Union grouping index byte
         drill_layer_pair_type: Drill pair type enum byte
-        pos_tolerance: Positive position tolerance
-        neg_tolerance: Negative position tolerance
+        hole_positive_tolerance: Upper drill-hole tolerance in internal units,
+            or 0x7fffffff when unset/N/A.
+        hole_negative_tolerance: Lower drill-hole tolerance magnitude in
+            internal units, or 0x7fffffff when unset/N/A.
+        pos_tolerance: Alias for hole_positive_tolerance.
+        neg_tolerance: Alias for hole_negative_tolerance.
         stackcr_pct_tokens: Raw StackCR percent lane bytes from VIA tail zone.
             Maps to native `IPCB_Pad4.Get/SetState_StackCRPct(OnLayer/ExOnLayer)` routing.
         stackcr_use_percent_tokens: Raw StackCR use-percent lane bytes from VIA tail zone.
@@ -189,8 +198,8 @@ class AltiumPcbVia(PcbGraphicalObject):
         self.is_pad_removed: list[bool] = [False] * 32
         self.union_index: int = 0
         self.drill_layer_pair_type: int = 0
-        self.pos_tolerance: int = 0
-        self.neg_tolerance: int = 0
+        self._hole_positive_tolerance: int = PCB_HOLE_TOLERANCE_UNSET
+        self._hole_negative_tolerance: int = PCB_HOLE_TOLERANCE_UNSET
         self.backdrill_params: dict[str, object] = {}
         self.counterhole_params: dict[str, object] = {}
         self.ipc4761_via_type: PcbIpc4761ViaType | int = PcbIpc4761ViaType.NONE
@@ -618,6 +627,96 @@ class AltiumPcbVia(PcbGraphicalObject):
         return PcbRecordType.VIA
 
     @property
+    def hole_positive_tolerance(self) -> int:
+        """
+        Upper drill-hole tolerance in internal units.
+
+        Altium stores unset/N/A as ``0x7fffffff``.
+        """
+        return int(self._hole_positive_tolerance)
+
+    @hole_positive_tolerance.setter
+    def hole_positive_tolerance(self, value: int) -> None:
+        self._hole_positive_tolerance = int(value)
+
+    @property
+    def hole_negative_tolerance(self) -> int:
+        """
+        Lower drill-hole tolerance magnitude in internal units.
+
+        The serialized value is a positive magnitude; Altium stores unset/N/A
+        as ``0x7fffffff``.
+        """
+        return int(self._hole_negative_tolerance)
+
+    @hole_negative_tolerance.setter
+    def hole_negative_tolerance(self, value: int) -> None:
+        self._hole_negative_tolerance = int(value)
+
+    @property
+    def pos_tolerance(self) -> int:
+        """
+        Alias for `hole_positive_tolerance`.
+        """
+        return self.hole_positive_tolerance
+
+    @pos_tolerance.setter
+    def pos_tolerance(self, value: int) -> None:
+        self.hole_positive_tolerance = value
+
+    @property
+    def neg_tolerance(self) -> int:
+        """
+        Alias for `hole_negative_tolerance`.
+        """
+        return self.hole_negative_tolerance
+
+    @neg_tolerance.setter
+    def neg_tolerance(self, value: int) -> None:
+        self.hole_negative_tolerance = value
+
+    @property
+    def hole_positive_tolerance_mils(self) -> float | None:
+        """
+        Upper drill-hole tolerance in mils, or ``None`` when unset/N/A.
+        """
+        return hole_tolerance_mils_from_internal(self._hole_positive_tolerance)
+
+    @hole_positive_tolerance_mils.setter
+    def hole_positive_tolerance_mils(self, value: float | None) -> None:
+        self._hole_positive_tolerance = hole_tolerance_internal_from_mils(
+            value, "hole_positive_tolerance_mils"
+        )
+
+    @property
+    def hole_negative_tolerance_mils(self) -> float | None:
+        """
+        Lower drill-hole tolerance magnitude in mils, or ``None`` when unset/N/A.
+        """
+        return hole_tolerance_mils_from_internal(self._hole_negative_tolerance)
+
+    @hole_negative_tolerance_mils.setter
+    def hole_negative_tolerance_mils(self, value: float | None) -> None:
+        self._hole_negative_tolerance = hole_tolerance_internal_from_mils(
+            value, "hole_negative_tolerance_mils"
+        )
+
+    def set_hole_tolerances_mils(
+        self, positive_mils: float | None, negative_mils: float | None
+    ) -> None:
+        """
+        Set upper/lower drill-hole tolerances in mils.
+
+        Pass ``None`` for a side to write Altium's unset/N/A sentinel.
+        """
+        self._hole_positive_tolerance = hole_tolerance_internal_from_mils(
+            positive_mils, "positive_mils"
+        )
+        self._hole_negative_tolerance = hole_tolerance_internal_from_mils(
+            negative_mils, "negative_mils"
+        )
+
+    @property
     def diameter_mils(self) -> float:
         """
         Via diameter in mils.
@@ -750,6 +849,8 @@ class AltiumPcbVia(PcbGraphicalObject):
         self._raw_soldermask_linked_byte = 0x00
         self._raw_soldermask_from_hole_edge_byte = 0x00
         self._raw_drill_layer_pair_type_byte = 0x00
+        self._hole_positive_tolerance = PCB_HOLE_TOLERANCE_UNSET
+        self._hole_negative_tolerance = PCB_HOLE_TOLERANCE_UNSET
         self.cache_planes = 0x00
         self.paste_mask_expansion_mode = 0
         self.cache_valid_60 = 0

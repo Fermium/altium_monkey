@@ -103,6 +103,38 @@ internal units. They remain available for careful mutation and round-trip
 preservation; use the via examples below when authoring tenting or manual mask
 expansion for Altium Designer review.
 
+## Hole Tolerances
+
+Pads and vias expose Altium's drill-hole tolerance fields as positive and
+negative magnitudes. Use the `*_mils` helpers for normal public code:
+
+```python
+pad = pcbdoc.add_pad(
+    designator="1",
+    position_mils=(1000, 1000),
+    width_mils=150,
+    height_mils=150,
+    layer=PcbLayer.MULTI_LAYER,
+    hole_size_mils=50,
+    hole_positive_tolerance_mils=3.0,
+    hole_negative_tolerance_mils=2.0,
+)
+
+via = pcbdoc.add_via(
+    position_mils=(1400, 1000),
+    diameter_mils=28,
+    hole_size_mils=12,
+    hole_positive_tolerance_mils=1.5,
+    hole_negative_tolerance_mils=0.5,
+)
+```
+
+For mutation, assign `pad.hole_positive_tolerance_mils`,
+`pad.hole_negative_tolerance_mils`, `via.hole_positive_tolerance_mils`, or
+`via.hole_negative_tolerance_mils`. A value of `None` represents Altium's N/A
+state; the raw fields remain available as internal-unit integers for advanced
+round-trip work.
+
 ## Current Gaps
 
 PcbDoc does not yet use `ObjectCollection`.
@@ -125,15 +157,16 @@ Start with:
 7. [`pcbdoc_add_track`](../examples/pcbdoc_add_track/README.md)
 8. [`pcbdoc_add_arc`](../examples/pcbdoc_add_arc/README.md)
 9. [`pcbdoc_add_pad`](../examples/pcbdoc_add_pad/README.md)
-10. [`pcbdoc_add_via_ipc4761_matrix`](../examples/pcbdoc_add_via_ipc4761_matrix/README.md)
-11. [`pcbdoc_mutate_via_ipc4761`](../examples/pcbdoc_mutate_via_ipc4761/README.md)
-12. [`pcbdoc_add_text`](../examples/pcbdoc_add_text/README.md)
-13. [`pcbdoc_add_filled_region`](../examples/pcbdoc_add_filled_region/README.md)
-14. [`pcbdoc_insert_nets_route`](../examples/pcbdoc_insert_nets_route/README.md)
-15. [`pcbdoc_insert_footprint_from_pcblib`](../examples/pcbdoc_insert_footprint_from_pcblib/README.md)
-16. [`pcbdoc_extract_pcblib`](../examples/pcbdoc_extract_pcblib/README.md)
-17. [`pcbdoc_extract_embedded_3d_models`](../examples/pcbdoc_extract_embedded_3d_models/README.md)
-18. [`pcbdoc_extract_embedded_fonts`](../examples/pcbdoc_extract_embedded_fonts/README.md)
+10. [`pcbdoc_add_hole_tolerances`](../examples/pcbdoc_add_hole_tolerances/README.md)
+11. [`pcbdoc_add_via_ipc4761_matrix`](../examples/pcbdoc_add_via_ipc4761_matrix/README.md)
+12. [`pcbdoc_mutate_via_ipc4761`](../examples/pcbdoc_mutate_via_ipc4761/README.md)
+13. [`pcbdoc_add_text`](../examples/pcbdoc_add_text/README.md)
+14. [`pcbdoc_add_filled_region`](../examples/pcbdoc_add_filled_region/README.md)
+15. [`pcbdoc_insert_nets_route`](../examples/pcbdoc_insert_nets_route/README.md)
+16. [`pcbdoc_insert_footprint_from_pcblib`](../examples/pcbdoc_insert_footprint_from_pcblib/README.md)
+17. [`pcbdoc_extract_pcblib`](../examples/pcbdoc_extract_pcblib/README.md)
+18. [`pcbdoc_extract_embedded_3d_models`](../examples/pcbdoc_extract_embedded_3d_models/README.md)
+19. [`pcbdoc_extract_embedded_fonts`](../examples/pcbdoc_extract_embedded_fonts/README.md)
 
 See [API patterns](api_patterns/index.md) for public vs careful mutation
 guidance.

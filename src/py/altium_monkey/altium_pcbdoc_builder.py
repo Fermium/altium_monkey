@@ -2823,12 +2823,18 @@ class PcbDocBuildProfile:
         advanced_placer_options_data = PcbDocAdvancedPlacerOptionsData.from_bytes(
             raw_streams["Advanced Placer Options6/Data"]
         )
-        simbeor_cache_header_data = PcbDocRawBytesData.from_bytes(
-            raw_streams.get("SimbeorCacheSection/Header", b"")
-        )
-        simbeor_cache_data = PcbDocRawBytesData.from_bytes(
-            raw_streams.get("SimbeorCacheSection/Data", b"")
-        )
+        simbeor_cache_header_bytes = raw_streams.get("SimbeorCacheSection/Header")
+        simbeor_cache_bytes = raw_streams.get("SimbeorCacheSection/Data")
+        if simbeor_cache_header_bytes or simbeor_cache_bytes:
+            simbeor_cache_header_data = PcbDocRawBytesData.from_bytes(
+                simbeor_cache_header_bytes or b""
+            )
+            simbeor_cache_data = PcbDocRawBytesData.from_bytes(
+                simbeor_cache_bytes or b""
+            )
+        else:
+            simbeor_cache_header_data = None
+            simbeor_cache_data = None
         return cls(
             raw_streams=raw_streams,
             file_header_data=file_header_data,
@@ -3052,18 +3058,8 @@ class PcbDocBuilder:
                 self.profile.raw_streams["Advanced Placer Options6/Data"]
             )
         )
-        self.simbeor_cache_header_data = (
-            self.profile.simbeor_cache_header_data
-            or PcbDocRawBytesData.from_bytes(
-                self.profile.raw_streams["SimbeorCacheSection/Header"]
-            )
-        )
-        self.simbeor_cache_data = (
-            self.profile.simbeor_cache_data
-            or PcbDocRawBytesData.from_bytes(
-                self.profile.raw_streams["SimbeorCacheSection/Data"]
-            )
-        )
+        self.simbeor_cache_header_data = self.profile.simbeor_cache_header_data
+        self.simbeor_cache_data = self.profile.simbeor_cache_data
         self.arcs = list(
             parse_arc_stream(self.profile.raw_streams.get("Arcs6/Data", b""))
         )
@@ -3784,6 +3780,8 @@ class PcbDocBuilder:
         slot_rotation_degrees: float = 0.0,
         solder_mask_expansion_mils: float | None = None,
         paste_mask_expansion_mils: float | None = None,
+        hole_positive_tolerance_mils: float | None = None,
+        hole_negative_tolerance_mils: float | None = None,
         component_index: int | None = None,
     ) -> "PcbDocBuilder":
         pad = build_authored_pad(
@@ -3801,6 +3799,8 @@ class PcbDocBuilder:
             slot_rotation_degrees=slot_rotation_degrees,
             solder_mask_expansion_mils=solder_mask_expansion_mils,
             paste_mask_expansion_mils=paste_mask_expansion_mils,
+            hole_positive_tolerance_mils=hole_positive_tolerance_mils,
+            hole_negative_tolerance_mils=hole_negative_tolerance_mils,
         )
         pad.component_index = self._normalize_component_index(component_index)
         if net:
@@ -3835,6 +3835,8 @@ class PcbDocBuilder:
         net: str | None = None,
         ipc4761_via_type: int | PcbIpc4761ViaType = PcbIpc4761ViaType.NONE,
         propagation_delay_ps: float | None = None,
+        hole_positive_tolerance_mils: float | None = None,
+        hole_negative_tolerance_mils: float | None = None,
         is_tent_top: bool = False,
         is_tent_bottom: bool = False,
         is_test_fab_top: bool = False,
@@ -3849,6 +3851,8 @@ class PcbDocBuilder:
             hole_size_mils=hole_size_mils,
             layer_start=layer_start,
             layer_end=layer_end,
+            hole_positive_tolerance_mils=hole_positive_tolerance_mils,
+            hole_negative_tolerance_mils=hole_negative_tolerance_mils,
         )
         via.ipc4761_via_type = PcbIpc4761ViaType(int(ipc4761_via_type))
         if propagation_delay_ps is not None:
@@ -4103,6 +4107,64 @@ class PcbDocBuilder:
         streams["ViaStructures/Header"] = struct.pack("<I", len(links))
         streams["ViaStructures/Data"] = serialize_via_structure_links_stream(links)
 
+    def _apply_simbeor_cache_streams(self, streams: dict[str, bytes]) -> None:
+        simbeor_cache_header = (
+            self.simbeor_cache_header_data.build_stream()
+            if self.simbeor_cache_header_data is not None
+            else b""
+        )
+        simbeor_cache_data = (
+            self.simbeor_cache_data.build_stream()
+            if self.simbeor_cache_data is not None
+            else b""
+        )
+        if simbeor_cache_header or simbeor_cache_data:
+            streams["SimbeorCacheSection/Header"] = simbeor_cache_header
+            streams["SimbeorCacheSection/Data"] = simbeor_cache_data
+
+    def _apply_model_streams(self, streams: dict[str, bytes]) -> None:
+        if self._models_dirty:
+            embedded_models = [spec.model for spec in self._embedded_models]
+            write_models_no_embed = (
+                self._models_stream_source == "ModelsNoEmbed/Data"
+                or bool(self.profile.raw_streams.get("ModelsNoEmbed/Data"))
+                or len(embedded_models) != len(self.models)
+            )
+            if write_models_no_embed:
+                streams["ModelsNoEmbed/Header"] = struct.pack("<I", len(self.models))
+                streams["ModelsNoEmbed/Data"] = build_model_stream(self.models)
+                streams["Models/Header"] = struct.pack("<I", len(embedded_models))
+                streams["Models/Data"] = build_model_stream(embedded_models)
+            else:
+                streams["ModelsNoEmbed/Header"] = _ZERO_HEADER
+                streams["ModelsNoEmbed/Data"] = b""
+                streams["Models/Header"] = struct.pack("<I", len(self.models))
+                streams["Models/Data"] = build_model_stream(self.models)
+            for key in list(streams):
+                if (
+                    key.startswith("Models/")
+                    and key.count("/") == 1
+                    and key.split("/", 1)[1].isdigit()
+                ):
+                    streams.pop(key, None)
+            for index, spec in enumerate(self._embedded_models):
+                streams[f"Models/{index}"] = spec.embedded_payload
+            return
+
+        streams["Models/Header"] = self._streams.get("Models/Header", _ZERO_HEADER)
+        streams["Models/Data"] = self._streams.get("Models/Data", b"")
+        streams["ModelsNoEmbed/Header"] = self._streams.get(
+            "ModelsNoEmbed/Header", _ZERO_HEADER
+        )
+        streams["ModelsNoEmbed/Data"] = self._streams.get("ModelsNoEmbed/Data", b"")
+        for key, value in self._streams.items():
+            if (
+                key.startswith("Models/")
+                and key.count("/") == 1
+                and key.split("/", 1)[1].isdigit()
+            ):
+                streams[key] = value
+
     def build_streams(self) -> dict[str, bytes]:
         streams = dict(self._streams)
 
@@ -4193,10 +4255,7 @@ class PcbDocBuilder:
         streams["Advanced Placer Options6/Data"] = (
             self.advanced_placer_options_data.build_stream()
         )
-        streams["SimbeorCacheSection/Header"] = (
-            self.simbeor_cache_header_data.build_stream()
-        )
-        streams["SimbeorCacheSection/Data"] = self.simbeor_cache_data.build_stream()
+        self._apply_simbeor_cache_streams(streams)
         if self._nets_dirty:
             streams["Nets6/Header"] = struct.pack("<I", len(self.nets))
             streams["Nets6/Data"] = build_net_stream(self.nets)
@@ -4234,46 +4293,7 @@ class PcbDocBuilder:
                 "Fills6/Header", struct.pack("<I", len(self.fills))
             )
             streams["Fills6/Data"] = self._streams.get("Fills6/Data", b"")
-        if self._models_dirty:
-            embedded_models = [spec.model for spec in self._embedded_models]
-            write_models_no_embed = (
-                self._models_stream_source == "ModelsNoEmbed/Data"
-                or bool(self.profile.raw_streams.get("ModelsNoEmbed/Data"))
-                or len(embedded_models) != len(self.models)
-            )
-            if write_models_no_embed:
-                streams["ModelsNoEmbed/Header"] = struct.pack("<I", len(self.models))
-                streams["ModelsNoEmbed/Data"] = build_model_stream(self.models)
-                streams["Models/Header"] = struct.pack("<I", len(embedded_models))
-                streams["Models/Data"] = build_model_stream(embedded_models)
-            else:
-                streams["ModelsNoEmbed/Header"] = _ZERO_HEADER
-                streams["ModelsNoEmbed/Data"] = b""
-                streams["Models/Header"] = struct.pack("<I", len(self.models))
-                streams["Models/Data"] = build_model_stream(self.models)
-            for key in list(streams):
-                if (
-                    key.startswith("Models/")
-                    and key.count("/") == 1
-                    and key.split("/", 1)[1].isdigit()
-                ):
-                    streams.pop(key, None)
-            for index, spec in enumerate(self._embedded_models):
-                streams[f"Models/{index}"] = spec.embedded_payload
-        else:
-            streams["Models/Header"] = self._streams.get("Models/Header", _ZERO_HEADER)
-            streams["Models/Data"] = self._streams.get("Models/Data", b"")
-            streams["ModelsNoEmbed/Header"] = self._streams.get(
-                "ModelsNoEmbed/Header", _ZERO_HEADER
-            )
-            streams["ModelsNoEmbed/Data"] = self._streams.get("ModelsNoEmbed/Data", b"")
-            for key, value in self._streams.items():
-                if (
-                    key.startswith("Models/")
-                    and key.count("/") == 1
-                    and key.split("/", 1)[1].isdigit()
-                ):
-                    streams[key] = value
+        self._apply_model_streams(streams)
         if self._texts_dirty:
             table = self.widestrings_data.to_mapping()
             allocate_missing_widestring_indices(self.texts, table)

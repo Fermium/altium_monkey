@@ -1,3 +1,78 @@
+# altium-monkey 2026.05.22 Release Notes
+
+Package version: `2026.5.22`
+
+`2026.05.22` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.22`.
+
+This release completes public Python API coverage for PcbDoc and PcbLib
+pad/via drill-hole tolerances, adds a public example for manual Altium review,
+and fixes PcbDoc saves from source boards that do not contain Simbeor cache
+streams.
+
+## New PcbDoc And PcbLib Hole-Tolerance APIs
+
+Pads and vias now expose Altium's drill-hole tolerance fields for reading,
+mutation, and authoring:
+
+1. `hole_positive_tolerance`
+2. `hole_negative_tolerance`
+3. `hole_positive_tolerance_mils`
+4. `hole_negative_tolerance_mils`
+
+The raw fields use Altium internal integer units for careful round-trip work.
+Use the `*_mils` helpers for normal public code. `None` represents Altium's
+N/A tolerance state.
+
+`AltiumPcbDoc.add_pad(...)`, `AltiumPcbDoc.add_via(...)`,
+`PcbDocBuilder.add_pad(...)`, `PcbDocBuilder.add_via(...)`,
+`AltiumPcbLib.add_pad(...)`, and `AltiumPcbLib.add_via(...)` now accept
+`hole_positive_tolerance_mils` and `hole_negative_tolerance_mils`.
+
+When either tolerance side is supplied while authoring, an omitted side is
+written as an explicit `0mil` tolerance, matching Altium Designer's dialog
+model for enabled hole tolerances.
+
+## Examples
+
+One public PcbDoc example was added:
+
+1. `pcbdoc_add_hole_tolerances` loads a blank PcbDoc, adds labeled pad and via
+   drill-hole tolerance cases plus unset controls, saves the board, and writes
+   a JSON manifest for manual review in Altium Designer.
+
+## Bug Fixes
+
+### PcbDoc Saves Preserve Absent Simbeor Cache Streams
+
+PcbDoc saves from source files that do not contain `SimbeorCacheSection/*` now
+preserve that absence. The builder no longer creates present-but-zero-byte
+Simbeor cache streams for those boards, avoiding an Altium Designer stream-read
+error on open.
+
+## Public API Compatibility
+
+Existing documented APIs remain compatible. This release adds optional keyword
+arguments for pad/via authoring and new pad/via tolerance properties. Code that
+does not use the new fields should continue to read, mutate, and save boards as
+before.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+No new functional gaps were introduced in this release. The PcbDoc object-model
+and authoring limitations described in the 2026.05.20 release notes still
+apply.
+
+---
+
 # altium-monkey 2026.05.20 Release Notes
 
 Package version: `2026.5.20`

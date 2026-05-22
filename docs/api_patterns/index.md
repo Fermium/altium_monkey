@@ -225,6 +225,11 @@ for its unit: use `via.propagation_delay_ps` and
 `add_via(..., propagation_delay_ps=...)`. Altium stores the serialized value in
 seconds, but the public API uses picoseconds to match the Via dialog.
 
+Pad and via drill-hole tolerances use mil-unit helpers on top of raw
+internal-unit fields. Prefer `hole_positive_tolerance_mils` and
+`hole_negative_tolerance_mils` for reading, authoring, and mutation. `None`
+represents Altium's N/A tolerance state.
+
 ## Examples To Study
 
 Start with [`hello_schdoc`](../../examples/hello_schdoc/README.md),
@@ -250,6 +255,7 @@ For PCB authoring, see
 [`pcbdoc_add_track`](../../examples/pcbdoc_add_track/README.md),
 [`pcbdoc_add_arc`](../../examples/pcbdoc_add_arc/README.md),
 [`pcbdoc_add_pad`](../../examples/pcbdoc_add_pad/README.md),
+[`pcbdoc_add_hole_tolerances`](../../examples/pcbdoc_add_hole_tolerances/README.md),
 [`pcbdoc_add_via_ipc4761_matrix`](../../examples/pcbdoc_add_via_ipc4761_matrix/README.md),
 [`pcbdoc_add_text`](../../examples/pcbdoc_add_text/README.md),
 [`pcbdoc_add_filled_region`](../../examples/pcbdoc_add_filled_region/README.md),

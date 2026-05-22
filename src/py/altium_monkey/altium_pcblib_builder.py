@@ -2215,6 +2215,8 @@ class PcbLibBuilder:
         corner_radius_percent: int | None = None,
         slot_length_mil: float = 0.0,
         slot_rotation_degrees: float = 0.0,
+        hole_positive_tolerance_mil: float | None = None,
+        hole_negative_tolerance_mil: float | None = None,
     ) -> AltiumPcbPad:
         """
         Add a simple pad primitive to a footprint.
@@ -2272,6 +2274,18 @@ class PcbLibBuilder:
             pad.hole_shape = SLOT_HOLE_SHAPE
             pad.slot_size = slot_iu
             pad.slot_rotation = float(slot_rotation_degrees)
+        if (
+            hole_positive_tolerance_mil is not None
+            or hole_negative_tolerance_mil is not None
+        ):
+            pad.set_hole_tolerances_mils(
+                0.0
+                if hole_positive_tolerance_mil is None
+                else hole_positive_tolerance_mil,
+                0.0
+                if hole_negative_tolerance_mil is None
+                else hole_negative_tolerance_mil,
+            )
         self._append_primitive(footprint, pad)
         return pad
 
@@ -2542,6 +2556,8 @@ class PcbLibBuilder:
         hole_size_mil: float,
         layer_start: int | PcbLayer = PcbLayer.TOP,
         layer_end: int | PcbLayer = PcbLayer.BOTTOM,
+        hole_positive_tolerance_mil: float | None = None,
+        hole_negative_tolerance_mil: float | None = None,
     ) -> AltiumPcbVia:
         via = AltiumPcbVia()
         via.layer = int(PcbLayer.MULTI_LAYER)
@@ -2562,6 +2578,18 @@ class PcbLibBuilder:
         ):
             if 1 <= layer_id <= 32:
                 via.diameter_by_layer[layer_id - 1] = via.diameter
+        if (
+            hole_positive_tolerance_mil is not None
+            or hole_negative_tolerance_mil is not None
+        ):
+            via.set_hole_tolerances_mils(
+                0.0
+                if hole_positive_tolerance_mil is None
+                else hole_positive_tolerance_mil,
+                0.0
+                if hole_negative_tolerance_mil is None
+                else hole_negative_tolerance_mil,
+            )
         self._append_primitive(footprint, via)
         return via
 

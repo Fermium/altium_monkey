@@ -15,6 +15,11 @@ from .altium_pcb_mask_paste_rules import (
     has_pad_paste_opening,
     is_pad_solder_mask_only,
 )
+from .altium_pcb_hole_tolerance import (
+    PCB_HOLE_TOLERANCE_UNSET,
+    hole_tolerance_internal_from_mils,
+    hole_tolerance_mils_from_internal,
+)
 from .altium_record_types import PcbGraphicalObject, PcbLayer, PcbRecordType
 
 if TYPE_CHECKING:
@@ -31,6 +36,10 @@ log = logging.getLogger(__name__)
 _ALT_SHAPE_OVERRIDE = {
     9: PadShape.ROUNDED_RECTANGLE,
 }
+_PAD_HOLE_POSITIVE_TOLERANCE_OFFSET = 162
+_PAD_HOLE_NEGATIVE_TOLERANCE_OFFSET = 166
+_PAD_SUBRECORD5_EXTENDED_START = 61
+_PAD_SUBRECORD5_MODERN_LENGTH = 202
 
 
 class AltiumPcbPad(PcbGraphicalObject):
@@ -46,6 +55,10 @@ class AltiumPcbPad(PcbGraphicalObject):
         width: Pad width on top layer (internal units)
         height: Pad height on top layer (internal units)
         hole_size: Drill hole diameter (0 for SMT)
+        hole_positive_tolerance: Upper drill-hole tolerance in internal units,
+            or 0x7fffffff when unset/N/A.
+        hole_negative_tolerance: Lower drill-hole tolerance magnitude in
+            internal units, or 0x7fffffff when unset/N/A.
         shape: Pad shape (1=CIRCLE, 2=RECT, 3=OCTAGONAL)
         rotation: Rotation angle (degrees)
         layer: Layer (74=MULTI_LAYER for through-hole, 1=TOP, 32=BOTTOM for SMT)
@@ -68,6 +81,9 @@ class AltiumPcbPad(PcbGraphicalObject):
         self.designator: str = ""
         self.height: int = 0  # Internal units
         self.hole_size: int = 0  # Internal units (0 = SMT)
+        self._hole_positive_tolerance: int = PCB_HOLE_TOLERANCE_UNSET
+        self._hole_negative_tolerance: int = PCB_HOLE_TOLERANCE_UNSET
+        self._has_hole_tolerances: bool = False
         self.shape: int = PadShape.CIRCLE
         self.rotation: float = 0.0  # Degrees
         self.is_plated: bool = False
@@ -170,6 +186,79 @@ class AltiumPcbPad(PcbGraphicalObject):
         Return the PCB pad record discriminator.
         """
         return PcbRecordType.PAD
+
+    @property
+    def hole_positive_tolerance(self) -> int:
+        """
+        Upper drill-hole tolerance in internal units.
+
+        Altium stores unset/N/A as ``0x7fffffff``.
+        """
+        return int(self._hole_positive_tolerance)
+
+    @hole_positive_tolerance.setter
+    def hole_positive_tolerance(self, value: int) -> None:
+        self._hole_positive_tolerance = int(value)
+        self._has_hole_tolerances = True
+
+    @property
+    def hole_negative_tolerance(self) -> int:
+        """
+        Lower drill-hole tolerance magnitude in internal units.
+
+        The serialized value is a positive magnitude; Altium stores unset/N/A
+        as ``0x7fffffff``.
+        """
+        return int(self._hole_negative_tolerance)
+
+    @hole_negative_tolerance.setter
+    def hole_negative_tolerance(self, value: int) -> None:
+        self._hole_negative_tolerance = int(value)
+        self._has_hole_tolerances = True
+
+    @property
+    def hole_positive_tolerance_mils(self) -> float | None:
+        """
+        Upper drill-hole tolerance in mils, or ``None`` when unset/N/A.
+        """
+        return hole_tolerance_mils_from_internal(self._hole_positive_tolerance)
+
+    @hole_positive_tolerance_mils.setter
+    def hole_positive_tolerance_mils(self, value: float | None) -> None:
+        self._hole_positive_tolerance = hole_tolerance_internal_from_mils(
+            value, "hole_positive_tolerance_mils"
+        )
+        self._has_hole_tolerances = True
+
+    @property
+    def hole_negative_tolerance_mils(self) -> float | None:
+        """
+        Lower drill-hole tolerance magnitude in mils, or ``None`` when unset/N/A.
+        """
+        return hole_tolerance_mils_from_internal(self._hole_negative_tolerance)
+
+    @hole_negative_tolerance_mils.setter
+    def hole_negative_tolerance_mils(self, value: float | None) -> None:
+        self._hole_negative_tolerance = hole_tolerance_internal_from_mils(
+            value, "hole_negative_tolerance_mils"
+        )
+        self._has_hole_tolerances = True
+
+    def set_hole_tolerances_mils(
+        self, positive_mils: float | None, negative_mils: float | None
+    ) -> None:
+        """
+        Set upper/lower drill-hole tolerances in mils.
+
+        Pass ``None`` for a side to write Altium's unset/N/A sentinel.
+        """
+        self._hole_positive_tolerance = hole_tolerance_internal_from_mils(
+            positive_mils, "positive_mils"
+        )
+        self._hole_negative_tolerance = hole_tolerance_internal_from_mils(
+            negative_mils, "negative_mils"
+        )
+        self._has_hole_tolerances = True
 
     def parse_from_binary(self, data: bytes, offset: int = 0) -> int:
         """
@@ -494,9 +583,26 @@ class AltiumPcbPad(PcbGraphicalObject):
         if len(content) >= 118:
             self.layer_v7_save_id = struct.unpack("<I", content[114:118])[0]
 
+        if len(content) >= _PAD_HOLE_NEGATIVE_TOLERANCE_OFFSET + 4:
+            self._hole_positive_tolerance = struct.unpack(
+                "<i",
+                content[
+                    _PAD_HOLE_POSITIVE_TOLERANCE_OFFSET : _PAD_HOLE_POSITIVE_TOLERANCE_OFFSET
+                    + 4
+                ],
+            )[0]
+            self._hole_negative_tolerance = struct.unpack(
+                "<i",
+                content[
+                    _PAD_HOLE_NEGATIVE_TOLERANCE_OFFSET : _PAD_HOLE_NEGATIVE_TOLERANCE_OFFSET
+                    + 4
+                ],
+            )[0]
+            self._has_hole_tolerances = True
+
         # Capture any extended data beyond offset 61 (for round-trip compatibility)
         # (includes unknown byte + pad_mode + mask fields + everything after)
-        extended_start = 61
+        extended_start = _PAD_SUBRECORD5_EXTENDED_START
         if extended_start < len(content):
             self._subrecord5_extended_data = content[extended_start:]
             self._subrecord5_extended_signature = (
@@ -730,6 +836,9 @@ class AltiumPcbPad(PcbGraphicalObject):
             int(self.cache_paste_mask_expansion_valid or 0),
             int(self.cache_solder_mask_expansion_valid or 0),
             0 if self.layer_v7_save_id is None else int(self.layer_v7_save_id),
+            bool(self._has_hole_tolerances),
+            int(self._hole_positive_tolerance),
+            int(self._hole_negative_tolerance),
         )
 
     def _pack_flags(self) -> int:
@@ -777,8 +886,14 @@ class AltiumPcbPad(PcbGraphicalObject):
         else:
             ext_data = bytearray(b"\x00" * 57)
 
-        if len(ext_data) < 57:
-            ext_data.extend(b"\x00" * (57 - len(ext_data)))
+        min_len = 57
+        if self._has_hole_tolerances:
+            min_len = max(
+                min_len,
+                _PAD_SUBRECORD5_MODERN_LENGTH - _PAD_SUBRECORD5_EXTENDED_START,
+            )
+        if len(ext_data) < min_len:
+            ext_data.extend(b"\x00" * (min_len - len(ext_data)))
 
         if not self._subrecord5_extended_data:
             ext_data[0] = 0
@@ -811,6 +926,19 @@ class AltiumPcbPad(PcbGraphicalObject):
         struct.pack_into(
             "<I", ext_data, 53, int(self.layer_v7_save_id or 0) & 0xFFFFFFFF
         )
+        if self._has_hole_tolerances:
+            pos_ext_offset = (
+                _PAD_HOLE_POSITIVE_TOLERANCE_OFFSET - _PAD_SUBRECORD5_EXTENDED_START
+            )
+            neg_ext_offset = (
+                _PAD_HOLE_NEGATIVE_TOLERANCE_OFFSET - _PAD_SUBRECORD5_EXTENDED_START
+            )
+            struct.pack_into(
+                "<i", ext_data, pos_ext_offset, int(self._hole_positive_tolerance)
+            )
+            struct.pack_into(
+                "<i", ext_data, neg_ext_offset, int(self._hole_negative_tolerance)
+            )
         built = bytes(ext_data)
         self._subrecord5_extended_data = built
         self._subrecord5_extended_signature = current_sig

@@ -4,7 +4,7 @@
 
 Public examples are indexed from `examples/manifest.toml`.
 
-Total examples: `73`
+Total examples: `74`
 
 ## Generate
 
@@ -44,6 +44,7 @@ uv run python tools\generate_docs.py
 | [`pcbdoc_add_filled_region`](../../examples/pcbdoc_add_filled_region/README.md)<br>Add filled PCB regions | pcbdoc, mutation | Load a blank PcbDoc, add copper regions, a region with a hole, and a keepout region, and save the board. | pcbdoc, mutation, region, filled-region, keepout |
 | [`pcbdoc_add_free_3d_extruded`](../../examples/pcbdoc_add_free_3d_extruded/README.md)<br>Add a free extruded 3D body to a PcbDoc | pcbdoc, 3d | Create a PcbDoc and add a board-level generic extruded 3D body from a polygon projection. | pcbdoc, 3d, component-body, extruded, generation |
 | [`pcbdoc_add_free_3d_step`](../../examples/pcbdoc_add_free_3d_step/README.md)<br>Add a free embedded STEP 3D body to a PcbDoc | pcbdoc, 3d | Create a PcbDoc, embed a STEP model from disk, infer its projection, and add it as a free board-level 3D body. | pcbdoc, 3d, component-body, embedded-model, step, generation |
+| [`pcbdoc_add_hole_tolerances`](../../examples/pcbdoc_add_hole_tolerances/README.md)<br>Add PCB hole tolerances | pcbdoc, mutation | Load a blank PcbDoc, add labeled pad and via drill-hole tolerance examples plus unset controls, and save the board. | pcbdoc, mutation, pad, via, through-hole, hole-tolerance |
 | [`pcbdoc_add_pad`](../../examples/pcbdoc_add_pad/README.md)<br>Add PCB pads | pcbdoc, mutation | Load a blank PcbDoc, add SMT pads, through-hole pads, and a non-plated through hole with explicit zero mask expansions, and save the board. | pcbdoc, mutation, pad, smt, through-hole, npth |
 | [`pcbdoc_add_text`](../../examples/pcbdoc_add_text/README.md)<br>Add PCB text primitives | pcbdoc, mutation | Load a blank PcbDoc, add stroke text, TrueType text, inverted text, mirrored text, and barcode text variants, and save the board. | pcbdoc, mutation, text, truetype, barcode, inverted-text |
 | [`pcbdoc_add_track`](../../examples/pcbdoc_add_track/README.md)<br>Add PCB tracks | pcbdoc, mutation | Load a blank PcbDoc, add tracks on copper, overlay, and mechanical layers with several widths and net assignments, and save the board. | pcbdoc, mutation, track, routing, nets |
@@ -165,6 +166,7 @@ uv run python tools\generate_docs.py
 | [`pcbdoc_add_track`](../../examples/pcbdoc_add_track/README.md)<br>Add PCB tracks | pcbdoc, mutation | Load a blank PcbDoc, add tracks on copper, overlay, and mechanical layers with several widths and net assignments, and save the board. | pcbdoc, mutation, track, routing, nets |
 | [`pcbdoc_add_arc`](../../examples/pcbdoc_add_arc/README.md)<br>Add PCB arcs | pcbdoc, mutation | Load a blank PcbDoc, add full-circle and partial arc primitives on multiple layers, and save the board. | pcbdoc, mutation, arc, full-circle, routing |
 | [`pcbdoc_add_pad`](../../examples/pcbdoc_add_pad/README.md)<br>Add PCB pads | pcbdoc, mutation | Load a blank PcbDoc, add SMT pads, through-hole pads, and a non-plated through hole with explicit zero mask expansions, and save the board. | pcbdoc, mutation, pad, smt, through-hole, npth |
+| [`pcbdoc_add_hole_tolerances`](../../examples/pcbdoc_add_hole_tolerances/README.md)<br>Add PCB hole tolerances | pcbdoc, mutation | Load a blank PcbDoc, add labeled pad and via drill-hole tolerance examples plus unset controls, and save the board. | pcbdoc, mutation, pad, via, through-hole, hole-tolerance |
 | [`pcbdoc_add_via_ipc4761_matrix`](../../examples/pcbdoc_add_via_ipc4761_matrix/README.md)<br>Add IPC-4761 via variants | pcbdoc, mutation | Load a blank PcbDoc, add a labeled matrix of vias covering IPC-4761 types, tenting, and manual solder-mask expansion variants, and save the board. | pcbdoc, mutation, via, ipc4761, tenting, mask-expansion |
 | [`pcbdoc_mutate_via_ipc4761`](../../examples/pcbdoc_mutate_via_ipc4761/README.md)<br>Mutate PCB vias to IPC-4761 Type7 | pcbdoc, mutation, project | Copy the RT Super C1 project, find all 12 mil diameter / 6 mil hole vias, set them to IPC-4761 Type7 filling and capping, and save the mutated project. | pcbdoc, mutation, via, ipc4761, project |
 | [`pcbdoc_add_filled_region`](../../examples/pcbdoc_add_filled_region/README.md)<br>Add filled PCB regions | pcbdoc, mutation | Load a blank PcbDoc, add copper regions, a region with a hole, and a keepout region, and save the board. | pcbdoc, mutation, region, filled-region, keepout |

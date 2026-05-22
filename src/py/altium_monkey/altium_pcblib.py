@@ -250,6 +250,8 @@ class AltiumPcbFootprint:
         corner_radius_percent: int | None = None,
         slot_length_mils: float = 0.0,
         slot_rotation_degrees: float = 0.0,
+        hole_positive_tolerance_mils: float | None = None,
+        hole_negative_tolerance_mils: float | None = None,
     ) -> AltiumPcbPad:
         """
         Add a pad to this footprint using public mil units.
@@ -267,6 +269,10 @@ class AltiumPcbFootprint:
             corner_radius_percent: Optional rounded-rectangle corner radius percentage.
             slot_length_mils: Optional total slotted-hole length in mils.
             slot_rotation_degrees: Optional slotted-hole rotation in degrees.
+            hole_positive_tolerance_mils: Optional upper drill-hole tolerance
+                in mils.
+            hole_negative_tolerance_mils: Optional lower drill-hole tolerance
+                magnitude in mils.
 
         Returns:
             The authored `AltiumPcbPad` record.
@@ -287,6 +293,8 @@ class AltiumPcbFootprint:
             corner_radius_percent=corner_radius_percent,
             slot_length_mil=slot_length_mils,
             slot_rotation_degrees=slot_rotation_degrees,
+            hole_positive_tolerance_mil=hole_positive_tolerance_mils,
+            hole_negative_tolerance_mil=hole_negative_tolerance_mils,
         )
 
     def add_custom_pad(
@@ -457,6 +465,8 @@ class AltiumPcbFootprint:
         hole_size_mils: float,
         layer_start: int | PcbLayer = PcbLayer.TOP,
         layer_end: int | PcbLayer = PcbLayer.BOTTOM,
+        hole_positive_tolerance_mils: float | None = None,
+        hole_negative_tolerance_mils: float | None = None,
     ) -> AltiumPcbVia:
         """
         Add a via primitive to this footprint using mil units.
@@ -467,6 +477,10 @@ class AltiumPcbFootprint:
             hole_size_mils: Via drill diameter in mils.
             layer_start: Start layer as `PcbLayer` or native layer id.
             layer_end: End layer as `PcbLayer` or native layer id.
+            hole_positive_tolerance_mils: Optional upper drill-hole tolerance
+                in mils.
+            hole_negative_tolerance_mils: Optional lower drill-hole tolerance
+                magnitude in mils.
 
         Returns:
             The authored `AltiumPcbVia` record.
@@ -480,6 +494,8 @@ class AltiumPcbFootprint:
             hole_size_mil=hole_size_mils,
             layer_start=layer_start,
             layer_end=layer_end,
+            hole_positive_tolerance_mil=hole_positive_tolerance_mils,
+            hole_negative_tolerance_mil=hole_negative_tolerance_mils,
         )
 
     def add_region(
@@ -2349,7 +2365,9 @@ class AltiumPcbLib:
         if not names:
             raise ValueError("save_subset() requires at least one footprint name")
 
-        footprints_by_name = {footprint.name: footprint for footprint in self.footprints}
+        footprints_by_name = {
+            footprint.name: footprint for footprint in self.footprints
+        }
         missing = [name for name in names if name not in footprints_by_name]
         if missing:
             raise ValueError(f"save_subset() unknown footprint: {missing[0]!r}")

@@ -500,6 +500,23 @@ requires_extra = []
 tags = ["pcbdoc", "mutation", "pad", "smt", "through-hole", "npth", "mask-expansion"]
 
 [[examples]]
+id = "pcbdoc_add_hole_tolerances"
+title = "Add PCB hole tolerances"
+summary = "Load a blank PcbDoc, add labeled pad and via drill-hole tolerance examples plus unset controls, and save the board."
+areas = ["pcbdoc", "mutation"]
+status = "ready"
+entrypoint = "pcbdoc_add_hole_tolerances/pcbdoc_add_hole_tolerances.py"
+doc = "pcbdoc_add_hole_tolerances/README.md"
+inputs = ["assets/pcbdoc/blank.PcbDoc"]
+assets = []
+outputs = [
+  "pcbdoc_add_hole_tolerances/output/pcbdoc_add_hole_tolerances.PcbDoc",
+  "pcbdoc_add_hole_tolerances/output/pcbdoc_add_hole_tolerances.json",
+]
+requires_extra = []
+tags = ["pcbdoc", "mutation", "pad", "via", "through-hole", "hole-tolerance"]
+
+[[examples]]
 id = "pcbdoc_add_via_ipc4761_matrix"
 title = "Add IPC-4761 via variants"
 summary = "Load a blank PcbDoc, add a labeled matrix of vias covering IPC-4761 types, tenting, and manual solder-mask expansion variants, and save the board."

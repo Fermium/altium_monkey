@@ -89,6 +89,8 @@ def build_authored_pad(
     slot_rotation_degrees: float = 0.0,
     solder_mask_expansion_mils: float | None = None,
     paste_mask_expansion_mils: float | None = None,
+    hole_positive_tolerance_mils: float | None = None,
+    hole_negative_tolerance_mils: float | None = None,
 ) -> AltiumPcbPad:
     """
     Create a modern authored PAD record from first principles.
@@ -159,6 +161,18 @@ def build_authored_pad(
             paste_mask_expansion_mils
         )
         pad._has_mask_expansion = True
+    if (
+        hole_positive_tolerance_mils is not None
+        or hole_negative_tolerance_mils is not None
+    ):
+        pad.set_hole_tolerances_mils(
+            0.0
+            if hole_positive_tolerance_mils is None
+            else hole_positive_tolerance_mils,
+            0.0
+            if hole_negative_tolerance_mils is None
+            else hole_negative_tolerance_mils,
+        )
     return pad
 
 
@@ -205,6 +219,8 @@ def build_authored_via(
     hole_size_mils: float,
     layer_start: int | PcbLayer = PcbLayer.TOP,
     layer_end: int | PcbLayer = PcbLayer.BOTTOM,
+    hole_positive_tolerance_mils: float | None = None,
+    hole_negative_tolerance_mils: float | None = None,
 ) -> AltiumPcbVia:
     """
     Create a modern authored VIA record from first principles.
@@ -228,6 +244,18 @@ def build_authored_via(
     ):
         if 1 <= layer_id <= 32:
             via.diameter_by_layer[layer_id - 1] = via.diameter
+    if (
+        hole_positive_tolerance_mils is not None
+        or hole_negative_tolerance_mils is not None
+    ):
+        via.set_hole_tolerances_mils(
+            0.0
+            if hole_positive_tolerance_mils is None
+            else hole_positive_tolerance_mils,
+            0.0
+            if hole_negative_tolerance_mils is None
+            else hole_negative_tolerance_mils,
+        )
     return via
 
 
