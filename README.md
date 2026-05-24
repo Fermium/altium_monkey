@@ -140,6 +140,13 @@ The public docs are Markdown-first for this release:
 The examples are the best starting point for public API usage. They are kept in
 [`examples/`](examples/) and are indexed from `examples/manifest.toml`.
 
+## Contributing
+
+This repository is a public release mirror. Issues, minimal reproduction cases,
+documentation fixes, API feedback, and focused pull requests are welcome, but
+PRs may be adapted or reimplemented in the upstream development workspace before
+they are mirrored back here. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## API Shape
 
 The schematic side uses a higher-level object system:
