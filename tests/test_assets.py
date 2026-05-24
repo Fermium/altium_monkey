@@ -445,12 +445,20 @@ def test_hello_draftsman_example_writes_project_and_upper_left_note(
     assert note.start_point is not None
     assert note.start_point.x_mm == pytest.approx(6.0)
     assert note.start_point.y_mm == pytest.approx(page.size.height_mm - 31.0)
+    assert note.rect is not None
+    assert note.rect.x_mm == pytest.approx(6.0)
+    assert note.rect.y_mm == pytest.approx(page.size.height_mm - 31.0)
+    assert note.rect.width_mm == pytest.approx(250.0)
+    assert note.rect.height_mm == pytest.approx(0.0)
 
     picture = document.pictures[0]
     assert picture.maintain_aspect_ratio is True
-    assert picture.image_bytes == (
-        check_examples_root / "hello_draftsman" / "assets" / "monkey.png"
-    ).read_bytes()
+    assert (
+        picture.image_bytes
+        == (
+            check_examples_root / "hello_draftsman" / "assets" / "monkey.png"
+        ).read_bytes()
+    )
     assert picture.rect is not None
     assert picture.rect.x_mm == pytest.approx(3.0)
     assert picture.rect.y_mm == pytest.approx(113.64583333333331)
@@ -461,7 +469,9 @@ def test_hello_draftsman_example_writes_project_and_upper_left_note(
 def test_draftsman_add_image_example_writes_text_and_picture(
     check_examples_root: Path,
 ) -> None:
-    example = next(item for item in _load_examples() if item["id"] == "draftsman_add_image")
+    example = next(
+        item for item in _load_examples() if item["id"] == "draftsman_add_image"
+    )
     result = _run_example_entrypoint(example, check_examples_root)
     assert result.returncode == 0, result.stderr
 
@@ -510,9 +520,11 @@ def test_draftsman_add_image_example_writes_text_and_picture(
     assert text.vertical_alignment is DraftsmanVerticalAlignment.CENTER
 
     picture = document.pictures[0]
-    expected_image_height_mm = 80.0 * summary["source_image_px"]["height"] / summary[
-        "source_image_px"
-    ]["width"]
+    expected_image_height_mm = (
+        80.0
+        * summary["source_image_px"]["height"]
+        / summary["source_image_px"]["width"]
+    )
     assert picture.maintain_aspect_ratio is True
     assert picture.image_bytes == asset_bytes
     assert picture.rect is not None
@@ -520,6 +532,61 @@ def test_draftsman_add_image_example_writes_text_and_picture(
     assert picture.rect.y_mm == pytest.approx((297.0 - expected_image_height_mm) / 2.0)
     assert picture.rect.width_mm == pytest.approx(80.0)
     assert picture.rect.height_mm == pytest.approx(expected_image_height_mm)
+
+
+def test_draftsman_multipage_notes_example_writes_two_page_drawing(
+    check_examples_root: Path,
+) -> None:
+    example = next(
+        item for item in _load_examples() if item["id"] == "draftsman_multipage_notes"
+    )
+    result = _run_example_entrypoint(example, check_examples_root)
+    assert result.returncode == 0, result.stderr
+
+    from altium_monkey import AltiumDraftsmanDocument, DraftsmanStandardSheetSize
+    from altium_monkey.altium_prjpcb import AltiumPrjPcb
+
+    output_root = check_examples_root / "draftsman_multipage_notes" / "output"
+    draftsman_path = output_root / "draftsman_multipage_notes.PCBDwf"
+    summary_path = (
+        check_examples_root
+        / "draftsman_multipage_notes"
+        / "output"
+        / "draftsman_multipage_notes.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    document = AltiumDraftsmanDocument.from_file(draftsman_path)
+    project = AltiumPrjPcb(output_root / "draftsman_multipage_notes.PrjPcb")
+    project_documents = {str(document["path"]) for document in project.documents}
+
+    assert (output_root / "draftsman_multipage_notes.SchDoc").exists()
+    assert (output_root / "draftsman_multipage_notes.PcbDoc").exists()
+    assert document.source_document_name == "draftsman_multipage_notes.PcbDoc"
+    assert summary["source_document_name"] == "draftsman_multipage_notes.PcbDoc"
+    assert len(document.pages) == 2
+    assert len(document.notes) == 2
+    assert summary["page_ids"] == [page.id for page in document.pages]
+    assert summary["item_ids"] == [note.id for note in document.notes]
+    assert summary["note_titles"] == ["PAGE 1 NOTES", "PAGE 2 NOTES"]
+    assert summary["lookup_demo"]["page_by_id"] == summary["page_ids"][1]
+    assert summary["lookup_demo"]["note_by_id"] == "PAGE 2 NOTES"
+    assert summary["lookup_demo"]["page_note_by_title"] == summary["item_ids"][1]
+    assert {
+        "draftsman_multipage_notes.SchDoc",
+        "draftsman_multipage_notes.PcbDoc",
+        "draftsman_multipage_notes.PCBDwf",
+    }.issubset(project_documents)
+
+    page_2 = document.page_by_id(summary["page_ids"][1])
+    assert page_2 is not None
+    assert page_2.standard_sheet_size is DraftsmanStandardSheetSize.A3
+    page_2_note = page_2.note_by_title("page 2 notes")
+    assert page_2_note is not None
+    assert page_2_note.id == summary["item_ids"][1]
+    assert document.note_by_id(summary["item_ids"][0]).page.id == summary["page_ids"][0]
+    assert document.note_by_id(summary["item_ids"][1]).page.id == summary["page_ids"][1]
+    assert len(summary["notes"][0]["row_ids"]) == 1
+    assert len(summary["notes"][1]["row_ids"]) == 1
 
 
 def test_schdoc_apply_dynamic_template_inherits_template_sheet_context(

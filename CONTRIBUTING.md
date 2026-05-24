@@ -2,16 +2,16 @@
 
 Thanks for your interest in improving Altium Monkey.
 
-This repository is a public release mirror for a project developed in a
-separate upstream workspace. The project uses additional private validation
+This repository is a published mirror for a project developed in a separate
+upstream workspace. The project uses additional private validation
 infrastructure and a large file corpus that is not included in this repository.
 
 Because of that, pull requests are welcome as proposals, but they may not be
 merged directly as submitted. A PR can still be very useful when it shows the
 intended behavior, expected API shape, a failing case, or a possible
-implementation strategy. Accepted changes may be adapted, rewritten, or ported
-into the upstream source tree, validated there, and mirrored back to this
-repository in a later public release.
+implementation strategy. Accepted changes may be adapted or rewritten in the
+upstream source tree, validated there, and mirrored back to this repository in a
+later package version.
 
 ## What Helps
 
@@ -34,7 +34,7 @@ confidential metadata.
 
 ## Pull Requests
 
-Please keep pull requests focused. A small reproduction, test case, or clearly
+Please keep pull requests focused. A small reproduction, failing check, or clearly
 explained behavioral change is usually more useful than a broad rewrite.
 
 Public tests are an important first check, but they are not the final acceptance
@@ -61,7 +61,7 @@ If a file cannot be shared publicly, describe how it was created and which
 objects or settings are involved. Synthetic cases are preferred when they can
 reproduce the same behavior.
 
-## Public Release Notes
+## Release Notes
 
 User-visible changes are documented in `RELEASE_NOTES.md`. Public API changes,
 compatibility notes, and migration details should be described there when they

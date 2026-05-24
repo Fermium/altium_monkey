@@ -14,6 +14,7 @@ from .altium_pcb_mask_paste_rules import (
     get_pad_paste_expansion_iu,
     has_pad_paste_opening,
     is_pad_solder_mask_only,
+    should_force_pad_copper_render,
 )
 from .altium_pcb_hole_tolerance import (
     PCB_HOLE_TOLERANCE_UNSET,
@@ -1507,26 +1508,7 @@ class AltiumPcbPad(PcbGraphicalObject):
                 underlying copper on the owning side. Keep that distinction localized
                 to SVG instead of weakening the generic mask-only heuristic.
         """
-        if not layer.is_copper() or self.is_through_hole:
-            return False
-
-        source_layer = self._source_layer()
-        if source_layer != layer:
-            return False
-
-        if layer == PcbLayer.TOP:
-            return bool(
-                getattr(self, "is_assy_test_point_top", False)
-                or getattr(self, "is_fab_test_point_top", False)
-                or getattr(self, "is_test_fab_top", False)
-            )
-        if layer == PcbLayer.BOTTOM:
-            return bool(
-                getattr(self, "is_assy_test_point_bottom", False)
-                or getattr(self, "is_fab_test_point_bottom", False)
-                or getattr(self, "is_test_fab_bottom", False)
-            )
-        return False
+        return should_force_pad_copper_render(self, layer)
 
     def _layer_size(self, layer: PcbLayer) -> tuple[int, int]:
         """

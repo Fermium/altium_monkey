@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from .altium_record_types import PcbLayer
+
 
 # Default solder mask expansion: 4 mil = 40000 internal units.
 DEFAULT_SOLDER_MASK_EXPANSION_IU = 40000
@@ -97,7 +99,7 @@ def has_pad_paste_opening(
 def is_pad_solder_mask_only(pad: object) -> bool:
     """
     Return True when a side-specific SMD pad is intentionally mask-only.
-    
+
         This is intentionally narrow. In the real corpus, testpoint flags and
         manual paste expansions also appear on ordinary copper pads. The only
         safe pattern we currently treat as mask-only is:
@@ -142,4 +144,50 @@ def is_pad_solder_mask_only(pad: object) -> bool:
         return True
     if layer == 32 and _has_test_flag("bottom"):
         return True
+    return False
+
+
+def should_force_pad_copper_render(pad: object, layer: PcbLayer | int) -> bool:
+    """
+    Return True for legacy testpoint pads that still need board-copper output.
+
+    Some older TC2030-style pads carry a side-specific testpoint flag and a
+    large negative paste expansion to suppress the paste aperture. Fabrication
+    exports can treat that pattern as a mask-only aperture, but visual board
+    copper outputs still need to draw the owning-side copper pad.
+    """
+    try:
+        layer_enum = PcbLayer(int(layer))
+    except (TypeError, ValueError):
+        return False
+
+    if not layer_enum.is_copper():
+        return False
+
+    try:
+        hole_size = int(getattr(pad, "hole_size", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    if hole_size > 0:
+        return False
+
+    try:
+        source_layer = PcbLayer(int(getattr(pad, "layer", 0) or 0))
+    except (TypeError, ValueError):
+        return False
+    if source_layer != layer_enum:
+        return False
+
+    if layer_enum == PcbLayer.TOP:
+        return bool(
+            getattr(pad, "is_assy_test_point_top", False)
+            or getattr(pad, "is_fab_test_point_top", False)
+            or getattr(pad, "is_test_fab_top", False)
+        )
+    if layer_enum == PcbLayer.BOTTOM:
+        return bool(
+            getattr(pad, "is_assy_test_point_bottom", False)
+            or getattr(pad, "is_fab_test_point_bottom", False)
+            or getattr(pad, "is_test_fab_bottom", False)
+        )
     return False

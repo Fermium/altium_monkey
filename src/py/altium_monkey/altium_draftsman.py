@@ -205,7 +205,9 @@ class DraftsmanNoteBorderStyle(IntEnum):
                 return cls(border_style_v2)
             except ValueError:
                 return cls.NONE
-        return _NOTE_BORDER_LEGACY_LOOKUP.get((border_style or "None").casefold(), cls.NONE)
+        return _NOTE_BORDER_LEGACY_LOOKUP.get(
+            (border_style or "None").casefold(), cls.NONE
+        )
 
 
 class DraftsmanHorizontalAlignment(Enum):
@@ -505,7 +507,9 @@ class AltiumDraftsmanDocumentOptions:
     def set_font_style(self, font_style: DraftsmanFontStyle | int) -> None:
         """Set the document default font style by style object or id."""
 
-        self.font_style_id = font_style if isinstance(font_style, int) else font_style.id
+        self.font_style_id = (
+            font_style if isinstance(font_style, int) else font_style.id
+        )
 
     @property
     def non_fitted_font_style_id(self) -> int | None:
@@ -724,6 +728,30 @@ class AltiumDraftsmanNoteElement:
 
 class AltiumDraftsmanNote(AltiumDraftsmanItem):
     """Typed XML-backed wrapper for one Draftsman note item."""
+
+    @property
+    def rect(self) -> DraftsmanRect | None:
+        """Return the note placement as a Draftsman rectangle.
+
+        Draftsman note XML stores a start point and width, with height driven by
+        note contents. The returned rectangle therefore uses `height_mm=0`.
+        """
+
+        start_point = self.start_point
+        width_mm = self.width_mm
+        if start_point is None or width_mm is None:
+            return None
+        return DraftsmanRect(
+            x_mm=start_point.x_mm,
+            y_mm=start_point.y_mm,
+            width_mm=width_mm,
+            height_mm=0.0,
+        )
+
+    @rect.setter
+    def rect(self, value: DraftsmanRect) -> None:
+        self.start_point = DraftsmanPoint(value.x_mm, value.y_mm)
+        self.width_mm = value.width_mm
 
     @property
     def elements(self) -> ObjectCollection:
@@ -1221,6 +1249,34 @@ class AltiumDraftsmanPage:
 
         return self.items.of_type(AltiumDraftsmanNote)
 
+    def item_by_id(self, item_id: int) -> AltiumDraftsmanItem | None:
+        """Return the first page item with the requested id."""
+
+        return self.items.first(AltiumDraftsmanItem, id=item_id)
+
+    def items_by_type(self, item_type: str) -> ObjectCollection:
+        """Return a read-only collection of page items with a raw item type."""
+
+        return self.items.where(item_type=item_type)
+
+    def note_by_title(
+        self,
+        title: str,
+        *,
+        case_sensitive: bool = False,
+    ) -> AltiumDraftsmanNote | None:
+        """Return the first page note with the requested title."""
+
+        requested_title = title if case_sensitive else title.casefold()
+        for note in self.notes:
+            note_title = note.title
+            if note_title is None:
+                continue
+            effective_title = note_title if case_sensitive else note_title.casefold()
+            if effective_title == requested_title:
+                return note
+        return None
+
     def point_from_top_left(self, *, left_mm: float, top_mm: float) -> DraftsmanPoint:
         """Return a page point offset from the visual top-left corner.
 
@@ -1299,7 +1355,9 @@ class AltiumDraftsmanPage:
         _write_child_text(item, "Text", text)
         _write_bool_child(item, "UseDocumentFont", effective_use_document_font)
         _write_int_child(item, "Version", 1)
-        _write_child_text(item, "VerticalAlignment", _enum_value_or_text(vertical_alignment))
+        _write_child_text(
+            item, "VerticalAlignment", _enum_value_or_text(vertical_alignment)
+        )
 
         self._ensure_items_element().append(item)
         return AltiumDraftsmanText(item, self)
@@ -1333,9 +1391,10 @@ class AltiumDraftsmanPage:
         self,
         *,
         title: str | None = None,
-        x_mm: float = 20.0,
-        y_mm: float = 20.0,
-        width_mm: float = 120.0,
+        rect: DraftsmanRect | None = None,
+        x_mm: float | None = None,
+        y_mm: float | None = None,
+        width_mm: float | None = None,
         bullets: list[str] | tuple[str, ...] = (),
         element_font_style: DraftsmanFontStyle | int | None = None,
         title_font_style: DraftsmanFontStyle | int | None = None,
@@ -1347,15 +1406,24 @@ class AltiumDraftsmanPage:
     ) -> AltiumDraftsmanNote:
         """Append a simple Draftsman note item to this page.
 
-        `x_mm` and `y_mm` are Draftsman page coordinates with a lower-left
-        origin. Use `point_from_top_left(...)` to place a note by visual
-        top-left offsets.
+        `rect` is in Draftsman page coordinates with a lower-left origin. Use
+        `point_from_top_left(...)` to build a rect from visual top-left offsets.
+        Draftsman serializes notes as a start point plus width; `rect.height_mm`
+        is accepted for layout consistency with text and picture creation but
+        is not serialized. Legacy `x_mm`/`y_mm`/`width_mm` keyword arguments are
+        still accepted when `rect` is not provided.
 
         The generated note uses the document style pool by id and preserves the
         XML-backed model. More specialized note title/link element data can be
         added once additional Altium-open/save fixtures prove those contracts.
         """
 
+        note_rect = rect or DraftsmanRect(
+            x_mm=20.0 if x_mm is None else float(x_mm),
+            y_mm=20.0 if y_mm is None else float(y_mm),
+            width_mm=120.0 if width_mm is None else float(width_mm),
+            height_mm=0.0,
+        )
         document_font_id = self.document.document_options.font_style_id
         body_font_id = _style_id_or_default(element_font_style, document_font_id)
         heading_font_id = _style_id_or_default(title_font_style, body_font_id)
@@ -1387,7 +1455,9 @@ class AltiumDraftsmanPage:
             "HorizontalSpacing",
             draftsman_points_from_mm(2.0),
         )
-        _write_point_child(item, "StartPoint", DraftsmanPoint(x_mm, y_mm))
+        _write_point_child(
+            item, "StartPoint", DraftsmanPoint(note_rect.x_mm, note_rect.y_mm)
+        )
         _write_child_text(item, "Title", title)
         _write_int_child(item, "TitleFontStyleId", heading_font_id)
         _write_color_child(item, "TitleTextColor", effective_text_color)
@@ -1403,7 +1473,7 @@ class AltiumDraftsmanPage:
             effective_use_document_font_for_title,
         )
         _write_float_child(item, "VerticalSpacing", draftsman_points_from_mm(2.0))
-        _write_float_child(item, "Width", draftsman_points_from_mm(width_mm))
+        _write_float_child(item, "Width", draftsman_points_from_mm(note_rect.width_mm))
 
         self._ensure_items_element().append(item)
         return AltiumDraftsmanNote(item, self)
@@ -1661,6 +1731,11 @@ class AltiumDraftsmanDocument:
         ]
         return _read_only_collection(wrappers)
 
+    def page_by_id(self, page_id: int) -> AltiumDraftsmanPage | None:
+        """Return the first page with the requested id."""
+
+        return self.pages.first(AltiumDraftsmanPage, id=page_id)
+
     @property
     def items(self) -> ObjectCollection:
         """Return a read-only collection of all page item wrappers."""
@@ -1691,11 +1766,21 @@ class AltiumDraftsmanDocument:
 
         return self.max_page_or_item_id + 1
 
+    def item_by_id(self, item_id: int) -> AltiumDraftsmanItem | None:
+        """Return the first page item with the requested id."""
+
+        return self.items.first(AltiumDraftsmanItem, id=item_id)
+
     @property
     def notes(self) -> ObjectCollection:
         """Return a read-only collection of note items in the document."""
 
         return self.items.of_type(AltiumDraftsmanNote)
+
+    def note_by_id(self, note_id: int) -> AltiumDraftsmanNote | None:
+        """Return the first note item with the requested id."""
+
+        return self.notes.first(AltiumDraftsmanNote, id=note_id)
 
     @property
     def texts(self) -> ObjectCollection:
@@ -1708,6 +1793,63 @@ class AltiumDraftsmanDocument:
         """Return a read-only collection of picture items in the document."""
 
         return self.items.of_type(AltiumDraftsmanPicture)
+
+    def add_page(
+        self,
+        *,
+        copy_from: AltiumDraftsmanPage | None = None,
+        clear_items: bool = True,
+    ) -> AltiumDraftsmanPage:
+        """Append a page cloned from existing sheet setup and return it.
+
+        The first supported mode clears cloned page items. Preserving page
+        items needs id and reference remapping and is intentionally deferred.
+        """
+
+        if not clear_items:
+            raise NotImplementedError(
+                "add_page(clear_items=False) requires page-item id remapping"
+            )
+
+        source_page = copy_from or self.pages.first(AltiumDraftsmanPage)
+        if source_page is None:
+            blank_document = type(self).blank()
+            source_page = blank_document.pages[0]
+
+        page_element = deepcopy(source_page.element)
+        _write_int_child(page_element, "Id", self.next_page_or_item_id)
+        _clear_page_items(page_element)
+        self._ensure_pages_element().append(page_element)
+        return AltiumDraftsmanPage(page_element, self)
+
+    def remove_page(self, id_or_page: int | AltiumDraftsmanPage) -> bool:
+        """Remove a page by id or wrapper and report whether it was found."""
+
+        page_element = self._page_element_for(id_or_page)
+        if page_element is None:
+            return False
+        parent = page_element.getparent()
+        if parent is None:
+            return False
+        parent.remove(page_element)
+        return True
+
+    def move_page(self, id_or_page: int | AltiumDraftsmanPage, index: int) -> None:
+        """Move a page to a new zero-based position."""
+
+        page_element = self._page_element_for(id_or_page)
+        if page_element is None:
+            page_id = (
+                id_or_page.id
+                if isinstance(id_or_page, AltiumDraftsmanPage)
+                else id_or_page
+            )
+            raise KeyError(page_id)
+        parent = page_element.getparent()
+        if parent is None:
+            raise ValueError("page is detached")
+        parent.remove(page_element)
+        parent.insert(index, page_element)
 
     def to_xml_bytes(self, *, pretty_print: bool = False) -> bytes:
         """Serialize the live XML tree to UTF-8 bytes."""
@@ -1754,6 +1896,38 @@ class AltiumDraftsmanDocument:
             return 1
         return max(ids) + 1
 
+    def _ensure_pages_element(self) -> etree._Element:
+        pages_element = first_child_by_local_name(self._root, "Pages")
+        if pages_element is not None:
+            return pages_element
+
+        pages_element = etree.Element(qualified_name("Pages"))
+        parameters = first_child_by_local_name(self._root, "Parameters")
+        if parameters is not None:
+            self._root.insert(self._root.index(parameters), pages_element)
+        else:
+            self._root.append(pages_element)
+        return pages_element
+
+    def _page_element_for(
+        self,
+        id_or_page: int | AltiumDraftsmanPage,
+    ) -> etree._Element | None:
+        if isinstance(id_or_page, AltiumDraftsmanPage):
+            if (
+                id_or_page.document is self
+                and id_or_page.element.getparent() is not None
+            ):
+                return id_or_page.element
+            page_id = id_or_page.id
+            if page_id is None:
+                return None
+        else:
+            page_id = id_or_page
+
+        page = self.page_by_id(page_id)
+        return None if page is None else page.element
+
 
 def _parse_xml_root(xml_bytes: bytes) -> etree._Element:
     parser = etree.XMLParser(
@@ -1767,6 +1941,16 @@ def _parse_xml_root(xml_bytes: bytes) -> etree._Element:
     if not isinstance(root.tag, str):
         raise ValueError("Draftsman XML root must be an element")
     return root
+
+
+def _clear_page_items(page_element: etree._Element) -> None:
+    items_element = first_child_by_local_name(page_element, "Items")
+    if items_element is None:
+        etree.SubElement(page_element, qualified_name("Items"))
+        return
+    for child in list(items_element):
+        items_element.remove(child)
+    items_element.text = None
 
 
 def _font_decorations_from_flags(
@@ -2012,12 +2196,7 @@ def _read_margin_child(
     top_mm = _read_float_child(child, "Top")
     right_mm = _read_float_child(child, "Right")
     bottom_mm = _read_float_child(child, "Bottom")
-    if (
-        left_mm is None
-        or top_mm is None
-        or right_mm is None
-        or bottom_mm is None
-    ):
+    if left_mm is None or top_mm is None or right_mm is None or bottom_mm is None:
         return None
     return DraftsmanMargin(
         left_mm=draftsman_mm_from_points(left_mm),

@@ -131,9 +131,12 @@ def build_draftsman(project_dir: Path, pcbdoc_path: Path) -> Path:
 
     note = page.add_note(
         title="altium monkey wuz here",
-        x_mm=upper_left.x_mm,
-        y_mm=upper_left.y_mm,
-        width_mm=250.0,
+        rect=DraftsmanRect(
+            x_mm=upper_left.x_mm,
+            y_mm=upper_left.y_mm,
+            width_mm=250.0,
+            height_mm=0.0,
+        ),
         bullets=(
             "This PCBDwf was synthesized from Python.",
             "The linked board is HELLO-DRAFTSMAN.PcbDoc.",

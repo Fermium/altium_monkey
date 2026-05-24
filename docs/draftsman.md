@@ -22,11 +22,27 @@ Supported operations:
     and horizontal/vertical alignment
 12. create and inspect picture items with embedded bitmap bytes and
     maintain-aspect-ratio settings
+13. find pages, items, and notes by serialized ids
+14. add, remove, and reorder pages while preserving unsupported page/item XML
+15. find page-scoped notes by title
 
 Draftsman support is intentionally conservative. Unsupported objects remain as
 raw XML and are preserved when the document is saved. Saving currently writes
 raw XML containers; LZ4 write support is reserved by the API but not implemented
 yet.
+
+## Pages And Items
+
+Draftsman page ids and page item ids share one document-wide integer namespace.
+Use `document.page_by_id(...)`, `document.item_by_id(...)`, and
+`document.note_by_id(...)` for stable id lookup. Use page-scoped helpers such as
+`page.item_by_id(...)`, `page.items_by_type(...)`, and
+`page.note_by_title(...)` when the visual page context matters.
+
+`document.add_page(copy_from=page, clear_items=True)` clones page sheet setup
+and assigns a new page id without copying page items. Item-preserving page
+duplication is intentionally deferred because cloned page items need id and
+cross-reference remapping.
 
 ## Fonts
 
@@ -48,13 +64,15 @@ Font decoration flags use Altium's Draftsman values:
 
 Draftsman serializes page and note geometry as drawing points at 96 points per
 inch. The public Python fields ending in `_mm` convert to and from millimeters.
-For example, `page.add_note(x_mm=20, y_mm=30, width_mm=250)` writes the
-corresponding serialized drawing-point values into the `.PCBDwf`.
+Text, picture, and note creation all accept `DraftsmanRect` placement. For
+notes, Draftsman serializes a start point plus width and computes height from
+the note contents, so `rect.height_mm` is accepted as a layout hint but is not
+serialized.
 
 Draftsman page coordinates use a lower-left origin. X increases to the right
 and Y increases toward the top of the sheet. For visual placement from the
 upper-left corner, use `page.point_from_top_left(left_mm=..., top_mm=...)` and
-pass the returned point into `page.add_note(...)`.
+build a `DraftsmanRect` from the returned point.
 
 Use `DraftsmanStandardSheetSize` for standard page sizes instead of writing raw
 dimensions directly.
@@ -119,11 +137,15 @@ doc.document_options.grid_color = DraftsmanColor.rgb(243, 243, 243)
 page = doc.pages[0]
 page.apply_standard_sheet_size(DraftsmanStandardSheetSize.A3)
 upper_left = page.point_from_top_left(left_mm=6, top_mm=8)
-note = page.add_note(
-    title="GENERAL NOTES",
+note_rect = DraftsmanRect(
     x_mm=upper_left.x_mm,
     y_mm=upper_left.y_mm,
     width_mm=250,
+    height_mm=0,
+)
+note = page.add_note(
+    title="GENERAL NOTES",
+    rect=note_rect,
     bullets=("Fabricate per IPC-6012.", "Inspect before shipment."),
     element_font_style=font,
 )
@@ -154,4 +176,17 @@ and [`hello_draftsman`](../examples/hello_draftsman/README.md) examples for
 project-level flows that create linked `.PCBDwf` files and add them to
 `.PrjPcb` projects. See
 [`draftsman_add_image`](../examples/draftsman_add_image/README.md) for a
-minimal text-plus-image synthesis flow.
+minimal text-plus-image synthesis flow, and
+[`draftsman_multipage_notes`](../examples/draftsman_multipage_notes/README.md)
+for multi-page authoring and lookup helpers.
+
+The
+[`draftsman_netclass_autodoc`](../examples/draftsman_netclass_autodoc/README.md)
+example is a more advanced experimental flow. It synthesizes board-assembly-view
+cache geometry from PcbDoc routed copper so controlled-impedance net classes and
+differential pairs can be highlighted in generated Draftsman pages.
+The sample uses experimental support modules such as
+`altium_pcb_drawing_geometry` and `altium_draftsman_pcb_geometry_xml`; those
+modules are intentionally importable for experimentation, but their dataclasses
+and helper functions may change before the board-assembly-view API is promoted
+to a package-root public surface.

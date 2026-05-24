@@ -1,0 +1,54 @@
+{
+  "schema": "altium-monkey.draftsman-netclass-autodoc.v1",
+  "source_project": "assets/projects/loz-old-man/loz-old-man.PrjPcb",
+  "output_name": "loz_old_man",
+  "sheet_size": "ANSI B",
+  "view_scale": 2.0,
+  "target_fill_ratio": 0.75,
+  "tile_gap_x_mm": 8.0,
+  "tile_gap_y_mm": 8.0,
+  "minimum_routing_length_mils": 10.0,
+  "connected_highlight_filter": true,
+  "auto_fit_scale": true,
+  "style": {
+    "context_copper": "#B8B8B8",
+    "smd_pad_copper": "#000000",
+    "through_hole_pad_copper": "#000000",
+    "via_pad_copper": "#000000",
+    "drill_hole": "#FFFFFF",
+    "non_plated_hole": "#808080",
+    "document_grid": "#BEBEBE"
+  },
+  "groups": [
+    {
+      "id": "usb_host_pairs",
+      "title": "USB_HOST_D and EXT_USB_HOST_D",
+      "differential_pairs": ["USB_HOST_D", "EXT_USB_HOST_D"],
+      "highlight_color": "#D00000",
+      "notes": [
+        "USB host differential pairs grouped from differential-pair names.",
+        "90 Ohm as non-coplanar waveguide."
+      ]
+    },
+    {
+      "id": "diff90_all_usb",
+      "title": "DIFF90 USB Differential-Pair Class",
+      "differential_pair_classes": ["DIFF90"],
+      "highlight_color": "#9B1BBE",
+      "notes": [
+        "All DIFF90 members are shown together.",
+        "Use the per-layer tiles to inspect top and bottom routing."
+      ]
+    },
+    {
+      "id": "class_ram",
+      "title": "CLASS_RAM Bus",
+      "net_classes": ["CLASS_RAM"],
+      "highlight_color": "#0057D8",
+      "notes": [
+        "Large bus example with multiple routed layers.",
+        "The target-fill layout keeps the tile cluster centered on the ANSI B sheet."
+      ]
+    }
+  ]
+}

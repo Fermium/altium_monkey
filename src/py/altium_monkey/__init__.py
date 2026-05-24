@@ -541,6 +541,7 @@ _EXTRA_PUBLIC_SURFACES: dict[str, tuple[str, ...]] = {
         "get_pad_paste_expansion_iu",
         "has_pad_paste_opening",
         "is_pad_solder_mask_only",
+        "should_force_pad_copper_render",
     ),
     "altium_pcb_rule": ("AltiumPcbRule",),
     "altium_pcb_special_strings": (

@@ -70,9 +70,12 @@ def build_authored_region_pair(
     outline_points_mils: list[tuple[float, float]],
     layer: int | PcbLayer = PcbLayer.TOP,
     hole_points_mils: list[list[tuple[float, float]]] | None = None,
+    outline_vertices: Sequence[PcbExtendedVertex] | None = None,
     net_index: int | None = None,
     polygon_index: int = 0xFFFF,
     subpoly_index: int = -1,
+    union_index: int = 0,
+    region_kind: PcbRegionKind | int = PcbRegionKind.COPPER,
     is_keepout: bool = False,
     keepout_restrictions: int = 0,
 ) -> tuple[AltiumPcbRegion, AltiumPcbShapeBasedRegion]:
@@ -84,6 +87,21 @@ def build_authored_region_pair(
 
     layer_id = int(layer)
     holes = hole_points_mils or []
+    parsed_region_kind = PcbRegionKind(region_kind)
+    properties_kind = 1 if parsed_region_kind == PcbRegionKind.POLYGON_CUTOUT else int(parsed_region_kind)
+    shape_outline = list(outline_vertices or [])
+    if not shape_outline:
+        for x_mil, y_mil in outline_points_mils:
+            vertex = PcbExtendedVertex()
+            vertex.is_round = False
+            vertex.x = int(round(x_mil * 10000.0))
+            vertex.y = int(round(y_mil * 10000.0))
+            vertex.center_x = 0
+            vertex.center_y = 0
+            vertex.radius = 0
+            vertex.start_angle = 0.0
+            vertex.end_angle = 0.0
+            shape_outline.append(vertex)
 
     region = AltiumPcbRegion()
     region.layer = layer_id
@@ -93,8 +111,8 @@ def build_authored_region_pair(
     region.is_locked = False
     region.is_keepout = bool(is_keepout)
     region.is_polygon_outline = False
-    region.kind = 0
-    region.is_board_cutout = False
+    region.kind = properties_kind
+    region.is_board_cutout = parsed_region_kind == PcbRegionKind.BOARD_CUTOUT
     region.is_shapebased = False
     region.keepout_restrictions = int(keepout_restrictions)
     region.subpoly_index = int(subpoly_index)
@@ -104,9 +122,9 @@ def build_authored_region_pair(
     region.properties = {
         "V7_LAYER": PcbLayer(layer_id).to_json_name(),
         "NAME": "",
-        "KIND": "0",
+        "KIND": str(properties_kind),
         "SUBPOLYINDEX": str(int(subpoly_index)),
-        "UNIONINDEX": "0",
+        "UNIONINDEX": str(int(union_index)),
         "ARCRESOLUTION": "0.5mil",
         "ISSHAPEBASED": "FALSE",
         "CAVITYHEIGHT": "0mil",
@@ -132,11 +150,11 @@ def build_authored_region_pair(
     shape_region.net_index = 0xFFFF if net_index is None else int(net_index)
     shape_region.polygon_index = int(polygon_index)
     shape_region.component_index = 0xFFFF
-    shape_region.kind = PcbRegionKind.COPPER
+    shape_region.kind = parsed_region_kind
     shape_region.is_shapebased = False
     shape_region.subpoly_index = int(subpoly_index)
     shape_region.keepout_restrictions = 31
-    shape_region.union_index = 0
+    shape_region.union_index = int(union_index)
     shape_region._flags1_raw = 0x0C
     shape_region._header_skip5 = b"\xFF\xFF\xFF\xFF\x00"
     shape_region._header_skip2 = b"\x00\x00"
@@ -144,25 +162,14 @@ def build_authored_region_pair(
     shape_region.properties = {
         "V7_LAYER": PcbLayer(layer_id).to_json_name(),
         "NAME": " ",
-        "KIND": "0",
+        "KIND": str(properties_kind),
         "SUBPOLYINDEX": str(int(subpoly_index)),
-        "UNIONINDEX": "0",
+        "UNIONINDEX": str(int(union_index)),
         "ARCRESOLUTION": "0.5mil",
         "ISSHAPEBASED": "FALSE",
         "CAVITYHEIGHT": "0mil",
     }
-    outline: list[PcbExtendedVertex] = []
-    for x_mil, y_mil in outline_points_mils:
-        vertex = PcbExtendedVertex()
-        vertex.is_round = False
-        vertex.x = int(round(x_mil * 10000.0))
-        vertex.y = int(round(y_mil * 10000.0))
-        vertex.center_x = 0
-        vertex.center_y = 0
-        vertex.radius = 0
-        vertex.start_angle = 0.0
-        vertex.end_angle = 0.0
-        outline.append(vertex)
+    outline: list[PcbExtendedVertex] = list(shape_outline)
     if outline:
         closing = PcbExtendedVertex()
         first = outline[0]

@@ -36,6 +36,7 @@ Core file types:
 5. `.PrjPcb`
 6. `.OutJob`
 7. `.IntLib` extraction
+8. `.PCBDwf` Draftsman files, currently experimental
 
 Common workflows:
 
@@ -48,6 +49,8 @@ Common workflows:
 7. author and mutate PCB vias, including IPC-4761 protection metadata
 8. extract embedded fonts and 3D models
 9. generate project containers and run associated OutJobs
+10. create experimental Draftsman pages with notes, text, pictures, and
+    generated board-assembly-view highlight artwork
 
 ## Install
 
@@ -142,7 +145,7 @@ The examples are the best starting point for public API usage. They are kept in
 
 ## Contributing
 
-This repository is a public release mirror. Issues, minimal reproduction cases,
+This repository is a published mirror. Issues, minimal reproduction cases,
 documentation fixes, API feedback, and focused pull requests are welcome, but
 PRs may be adapted or reimplemented in the upstream development workspace before
 they are mirrored back here. See [CONTRIBUTING.md](CONTRIBUTING.md).

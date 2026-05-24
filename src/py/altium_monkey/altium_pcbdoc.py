@@ -1044,6 +1044,7 @@ class AltiumPcbDoc:
         self.arcs = builder.arcs
         self.tracks = builder.tracks
         self.fills = builder.fills
+        self.polygons = builder.polygons
         self.texts = builder.texts
         self.pads = builder.pads
         self.regions = builder.regions
@@ -1053,6 +1054,9 @@ class AltiumPcbDoc:
         self.via_structure_links = list(getattr(builder, "via_structure_links", []))
         self.via_structure_manager_count = len(self.via_structures)
         self.via_structure_link_count = len(self.via_structure_links)
+        self.extended_primitive_information = list(
+            getattr(builder, "extended_primitive_information", [])
+        )
         self.models = builder.models
         self.component_bodies = builder.component_bodies
         self.shapebased_component_bodies = builder.shapebased_component_bodies
@@ -1853,6 +1857,8 @@ class AltiumPcbDoc:
         width_mils: float,
         layer: int | str | PcbLayer = "Top Layer",
         net: str | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion_mils: float | None = None,
     ) -> AltiumPcbTrack:
         """
         Add a track segment using mil-unit endpoints and width.
@@ -1863,6 +1869,8 @@ class AltiumPcbDoc:
             width_mils: Track width in mils.
             layer: `PcbLayer`, native layer id, or supported layer name.
             net: Optional net name. The net is created if needed.
+            solder_mask_expansion_mils: Optional manual solder-mask expansion.
+            paste_mask_expansion_mils: Optional manual paste-mask expansion.
 
         Returns:
             The authored `AltiumPcbTrack` record.
@@ -1874,6 +1882,8 @@ class AltiumPcbDoc:
             width_mils=width_mils,
             layer=layer,
             net=net,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
         )
         self._mirror_authoring_builder_state()
         return self.tracks[-1]
@@ -1888,6 +1898,8 @@ class AltiumPcbDoc:
         width_mils: float,
         layer: int | str | PcbLayer = "Top Layer",
         net: str | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion_mils: float | None = None,
     ) -> AltiumPcbArc:
         """
         Add a circular arc using mil units and degree angles.
@@ -1900,6 +1912,8 @@ class AltiumPcbDoc:
             width_mils: Arc stroke width in mils.
             layer: `PcbLayer`, native layer id, or supported layer name.
             net: Optional net name. The net is created if needed.
+            solder_mask_expansion_mils: Optional manual solder-mask expansion.
+            paste_mask_expansion_mils: Optional manual paste-mask expansion.
 
         Returns:
             The authored `AltiumPcbArc` record.
@@ -1913,6 +1927,8 @@ class AltiumPcbDoc:
             width_mils=width_mils,
             layer=layer,
             net=net,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
         )
         self._mirror_authoring_builder_state()
         return self.arcs[-1]
@@ -1925,6 +1941,8 @@ class AltiumPcbDoc:
         rotation_degrees: float = 0.0,
         layer: int | str | PcbLayer = "Top Layer",
         net: str | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion_mils: float | None = None,
     ) -> AltiumPcbFill:
         """
         Add a rectangular fill using opposite mil-unit corners.
@@ -1935,6 +1953,8 @@ class AltiumPcbDoc:
             rotation_degrees: Fill rotation in degrees.
             layer: `PcbLayer`, native layer id, or supported layer name.
             net: Optional net name. The net is created if needed.
+            solder_mask_expansion_mils: Optional manual solder-mask expansion.
+            paste_mask_expansion_mils: Optional manual paste-mask expansion.
 
         Returns:
             The authored `AltiumPcbFill` record.
@@ -1946,6 +1966,8 @@ class AltiumPcbDoc:
             rotation_degrees=rotation_degrees,
             layer=layer,
             net=net,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
         )
         self._mirror_authoring_builder_state()
         return self.fills[-1]

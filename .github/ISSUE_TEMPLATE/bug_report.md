@@ -37,7 +37,7 @@ Provide the smallest command or code snippet that reproduces the issue.
 # Minimal example here.
 ```
 
-## Minimal Test Case
+## Minimal Reproduction
 
 For parser, serializer, renderer, or round-trip bugs, please attach or link the
 smallest public Altium file or fixture that reproduces the issue. A minimized

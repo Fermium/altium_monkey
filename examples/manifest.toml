@@ -1127,6 +1127,26 @@ requires_extra = []
 tags = ["draftsman", "pcbdwf", "generation", "text", "embedded-image"]
 
 [[examples]]
+id = "draftsman_multipage_notes"
+title = "Create a multi-page Draftsman notes document"
+summary = "Generate a minimal project with empty SchDoc/PcbDoc files, create a linked two-page Draftsman document, place page-scoped notes, and write a lookup summary."
+areas = ["draftsman", "prjpcb", "schdoc", "pcbdoc"]
+status = "ready"
+entrypoint = "draftsman_multipage_notes/draftsman_multipage_notes.py"
+doc = "draftsman_multipage_notes/README.md"
+inputs = []
+assets = []
+outputs = [
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.PrjPcb",
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.SchDoc",
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.PcbDoc",
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.PCBDwf",
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.json",
+]
+requires_extra = []
+tags = ["draftsman", "pcbdwf", "multipage", "notes", "project"]
+
+[[examples]]
 id = "draftsman_create_blank_project"
 title = "Create a blank linked Draftsman project"
 summary = "Copy the RT Super C1 project into an output workspace, create a blank AD25-profile PCBDwf linked to the board, register it in the PrjPcb, and write a JSON summary."
@@ -1146,6 +1166,36 @@ outputs = [
 ]
 requires_extra = []
 tags = ["draftsman", "pcbdwf", "generation", "blank-template", "project"]
+
+[[examples]]
+id = "draftsman_netclass_autodoc"
+title = "Generate Draftsman net-class highlight pages"
+summary = "Read JSON configs for Bunny Brain, RT Super C1, and loz-old-man, synthesize experimental board-assembly-view Draftsman pages with highlighted routed classes, and write per-project manifests."
+areas = ["draftsman", "pcbdoc", "svg"]
+status = "experimental"
+entrypoint = "draftsman_netclass_autodoc/draftsman_netclass_autodoc.py"
+doc = "draftsman_netclass_autodoc/README.md"
+inputs = [
+  "draftsman_netclass_autodoc/configs/bunny_brain.json",
+  "draftsman_netclass_autodoc/configs/rt_super_c1.json",
+  "draftsman_netclass_autodoc/configs/loz_old_man.json",
+]
+assets = [
+  "assets/projects/bunny_brain/bunny_brain_D.PrjPcb",
+  "assets/projects/bunny_brain/bunny_brain_D.PCBdoc",
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PrjPcb",
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PCBdoc",
+  "assets/projects/loz-old-man/loz-old-man.PrjPcb",
+  "assets/projects/loz-old-man/SB0037A.PcbDoc",
+]
+outputs = [
+  "draftsman_netclass_autodoc/output/draftsman_netclass_autodoc_manifest.json",
+  "draftsman_netclass_autodoc/output/bunny_brain/",
+  "draftsman_netclass_autodoc/output/rt_super_c1/",
+  "draftsman_netclass_autodoc/output/loz_old_man/",
+]
+requires_extra = []
+tags = ["draftsman", "pcbdwf", "pcbdoc", "net-class", "differential-pair", "experimental"]
 
 [[examples]]
 id = "schdoc_extract_images"

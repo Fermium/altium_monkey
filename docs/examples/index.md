@@ -4,7 +4,7 @@
 
 Public examples are indexed from `examples/manifest.toml`.
 
-Total examples: `79`
+Total examples: `81`
 
 ## Generate
 
@@ -29,6 +29,8 @@ uv run python tools\generate_docs.py
 | --- | --- | --- | --- |
 | [`draftsman_add_image`](../../examples/draftsman_add_image/README.md)<br>Add text and an embedded image to Draftsman | draftsman, mutation, image | Create an A3 Draftsman document, place centered embedded image bytes, and add a text item above the image. | draftsman, pcbdwf, generation, text, embedded-image |
 | [`draftsman_create_blank_project`](../../examples/draftsman_create_blank_project/README.md)<br>Create a blank linked Draftsman project | draftsman, pcbdoc, project | Copy the RT Super C1 project into an output workspace, create a blank AD25-profile PCBDwf linked to the board, register it in the PrjPcb, and write a JSON summary. | draftsman, pcbdwf, generation, blank-template, project |
+| [`draftsman_multipage_notes`](../../examples/draftsman_multipage_notes/README.md)<br>Create a multi-page Draftsman notes document | draftsman, prjpcb, schdoc, pcbdoc | Generate a minimal project with empty SchDoc/PcbDoc files, create a linked two-page Draftsman document, place page-scoped notes, and write a lookup summary. | draftsman, pcbdwf, multipage, notes, project |
+| [`draftsman_netclass_autodoc`](../../examples/draftsman_netclass_autodoc/README.md)<br>Generate Draftsman net-class highlight pages | draftsman, pcbdoc, svg | Read JSON configs for Bunny Brain, RT Super C1, and loz-old-man, synthesize experimental board-assembly-view Draftsman pages with highlighted routed classes, and write per-project manifests. | draftsman, pcbdwf, pcbdoc, net-class, differential-pair, experimental |
 | [`hello_draftsman`](../../examples/hello_draftsman/README.md)<br>Create a Draftsman hello project | draftsman, prjpcb, schdoc, pcbdoc | Generate a PrjPcb with one SchDoc, one PcbDoc, and one linked A3 Draftsman document containing a Comic Sans note and embedded image. | hello-world, draftsman, pcbdwf, project, generation, note |
 
 ### `intlib`
@@ -213,7 +215,9 @@ uv run python tools\generate_docs.py
 | [`outjob_runner`](../../examples/outjob_runner/README.md)<br>Run an Altium OutJob from Python | outjob, prjpcb, automation | Stage a working copy of the RT Super C1 project, resolve its associated OutJob through prj.outjob(), and optionally launch Altium Designer to run it. | project, outjob, runner, automation, altium-launcher |
 | [`hello_draftsman`](../../examples/hello_draftsman/README.md)<br>Create a Draftsman hello project | draftsman, prjpcb, schdoc, pcbdoc | Generate a PrjPcb with one SchDoc, one PcbDoc, and one linked A3 Draftsman document containing a Comic Sans note and embedded image. | hello-world, draftsman, pcbdwf, project, generation, note |
 | [`draftsman_add_image`](../../examples/draftsman_add_image/README.md)<br>Add text and an embedded image to Draftsman | draftsman, mutation, image | Create an A3 Draftsman document, place centered embedded image bytes, and add a text item above the image. | draftsman, pcbdwf, generation, text, embedded-image |
+| [`draftsman_multipage_notes`](../../examples/draftsman_multipage_notes/README.md)<br>Create a multi-page Draftsman notes document | draftsman, prjpcb, schdoc, pcbdoc | Generate a minimal project with empty SchDoc/PcbDoc files, create a linked two-page Draftsman document, place page-scoped notes, and write a lookup summary. | draftsman, pcbdwf, multipage, notes, project |
 | [`draftsman_create_blank_project`](../../examples/draftsman_create_blank_project/README.md)<br>Create a blank linked Draftsman project | draftsman, pcbdoc, project | Copy the RT Super C1 project into an output workspace, create a blank AD25-profile PCBDwf linked to the board, register it in the PrjPcb, and write a JSON summary. | draftsman, pcbdwf, generation, blank-template, project |
+| [`draftsman_netclass_autodoc`](../../examples/draftsman_netclass_autodoc/README.md)<br>Generate Draftsman net-class highlight pages | draftsman, pcbdoc, svg | Read JSON configs for Bunny Brain, RT Super C1, and loz-old-man, synthesize experimental board-assembly-view Draftsman pages with highlighted routed classes, and write per-project manifests. | draftsman, pcbdwf, pcbdoc, net-class, differential-pair, experimental |
 | [`schdoc_extract_images`](../../examples/schdoc_extract_images/README.md)<br>Extract embedded images from a SchDoc | schdoc, asset-extraction, image | Open a schematic, find embedded IMAGE records, write each embedded payload using a detected native extension, and save a JSON extraction manifest. | schdoc, image, embedded-image, asset-extraction |
 | [`schdoc_extract_schlib`](../../examples/schdoc_extract_schlib/README.md)<br>Extract SchLibs from a SchDoc | schdoc, schlib, asset-extraction | Extract placed component symbols from a schematic as a combined SchLib, split DBLib-ready SchLibs with metadata/model records stripped, and split SchLibs with parameters and implementations preserved. | schdoc, schlib, component, symbol-extraction, dblib |
 | [`schlib_find_symbol`](../../examples/schlib_find_symbol/README.md)<br>Find symbols across SchLib files | schlib | Scan a folder of SchLib files, build a library-to-symbol index, print all discovered symbols, and demonstrate fuzzy symbol search. | schlib, symbol, search, index, fuzzy-match |

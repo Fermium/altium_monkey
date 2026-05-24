@@ -1,3 +1,113 @@
+# altium-monkey 2026.05.24 Release Notes
+
+Package version: `2026.5.24`
+
+`2026.05.24` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.24`.
+
+This release is a focused Draftsman follow-up after `2026.05.23`. It keeps
+Draftsman support experimental, adds multi-page and object-id workflows, adds a
+JSON-driven controlled-impedance Draftsman sample, standardizes note/text/picture
+placement around `DraftsmanRect`, and carries the release-integration fix for
+Altium polygon-pour cutout classification in the toolz data-model writer path.
+
+## Draftsman API Follow-Up
+
+Draftsman documents now expose page and item lookup helpers for scan-and-mutate
+workflows:
+
+1. `AltiumDraftsmanDocument.page_by_id(...)`
+2. `AltiumDraftsmanDocument.item_by_id(...)`
+3. `AltiumDraftsmanDocument.note_by_id(...)`
+4. `AltiumDraftsmanPage.item_by_id(...)`
+5. `AltiumDraftsmanPage.items_by_type(...)`
+6. `AltiumDraftsmanPage.note_by_title(...)`
+
+`AltiumDraftsmanDocument.add_page(...)`, `remove_page(...)`, and
+`move_page(...)` support conservative multi-page document editing. New pages can
+copy sheet setup from an existing page while starting with an empty item list;
+item-preserving page cloning remains deferred until Draftsman item-reference
+remapping is fixture-proven.
+
+`page.add_note(...)` now accepts `rect=DraftsmanRect(...)`, matching
+`page.add_text(...)` and `page.add_picture(...)`. Existing
+`x_mm`/`y_mm`/`width_mm` note arguments are still accepted for compatibility.
+Because Draftsman note XML stores a start point plus width, `rect.height_mm` is
+accepted as a layout hint but is not serialized.
+
+The new `draftsman_multipage_notes` example creates a minimal project with an
+empty `.SchDoc`, empty `.PcbDoc`, linked `.PCBDwf`, and two Draftsman pages. It
+demonstrates page-id lookup, note-id lookup, page-scoped title lookup, and
+document-wide note iteration.
+
+## Experimental Net-Class Draftsman Autodoc
+
+The new `draftsman_netclass_autodoc` example reads JSON configs for Bunny Brain,
+RT Super C1, and loz-old-man, then synthesizes Draftsman board-assembly-view
+pages that highlight routed net classes, differential-pair classes,
+differential-pair names, or explicit scalar nets.
+
+Each configured group can define:
+
+1. selectors for net classes, differential-pair classes, differential pairs, or
+   nets
+2. a page title and notes
+3. highlight and context colors
+4. per-group view scale, auto-fit behavior, target fill ratio, and tile spacing
+5. a minimum routed-length threshold and connected-route highlight filtering
+
+For multi-layer routes, the sample tiles the relevant copper layers onto one
+ANSI B sheet per group. Top layer views are placed first, notes stay in the
+upper-left area, and the routed-layer cluster is centered in the remaining page
+area.
+
+This sample intentionally uses experimental support modules such as
+`altium_pcb_drawing_geometry` and `altium_draftsman_pcb_geometry_xml`. They are
+importable so advanced users can experiment, but the `PcbDrawing*` and
+`DraftsmanPcb*` dataclasses are not package-root public API and may change
+before a stable `page.add_board_assembly_view(...)` style API is promoted.
+
+## Draftsman Geometry And Rendering Fixes
+
+The shared PCB drawing-geometry path used by the Draftsman experiment now keeps
+legacy TC2030-style pads visible when negative paste expansion intentionally
+removes the paste opening. This mirrors the existing PCB SVG workaround and
+keeps the public SVG renderer path intact.
+
+The Draftsman autodoc geometry now also handles:
+
+1. free/componentless pads such as mounting holes
+2. configurable non-plated hole coloring
+3. visible drill and slot overlays above pad/via helper geometry
+4. IPC-4761 filled/capped vias rendered as copper without an open drill overlay
+5. crossing-zero Draftsman cache arcs using Altium-style unwrapped end angles
+6. connected-route highlight filtering so short segments remain highlighted
+   when they belong to a longer selected route
+7. internal-layer draw ordering with context copper underneath highlighted
+   routes, pad/via helpers, and drill overlays
+
+## Related Polygon-Pour Cutout Writer Fix
+
+The release integration includes the toolz data-model Altium PcbDoc writer fix
+for polygon-pour cutout classification. Legacy `REGION` raw `KIND=2` records are
+no longer treated as cutouts, while legacy `KIND=1`, parsed polygon cutouts, and
+SDK-style cutout enum names are accepted. Regression coverage verifies both
+classification behavior and realized polygon-hole preservation.
+
+## Public Repo Hygiene
+
+The published GitHub mirror now includes contribution guidance plus GitHub issue
+and pull-request templates. The templates explain the generated mirror workflow
+and ask for minimal Altium reproduction files when users report file format
+issues.
+
+## Compatibility Notes
+
+Existing documented APIs remain compatible. Draftsman remains experimental:
+unsupported objects are preserved as raw XML, board-derived cache synthesis is a
+sample-level capability, and broader board-view/callout/dimension APIs are still
+future work.
+
 # altium-monkey 2026.05.23 Release Notes
 
 Package version: `2026.5.23`

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .altium_board import resolve_outline_arc_segment
+from .altium_pcb_drill_rendering import should_render_via_drill_hole
 from .altium_embedded_font_helpers import safe_embedded_font_filename_component
 from .altium_resolved_layer_stack import resolved_layer_stack_from_pcbdoc
 from .altium_pcb_special_strings import (
@@ -2621,6 +2622,8 @@ class PcbSvgRenderer:
             if self._should_skip_primitive_for_svg(via):
                 continue
             if not via._spans_layer(layer):  # noqa: SLF001
+                continue
+            if not should_render_via_drill_hole(via):
                 continue
 
             hole_radius_mm = max(via.hole_size_mils * _MIL_TO_MM / 2.0, 0.0)

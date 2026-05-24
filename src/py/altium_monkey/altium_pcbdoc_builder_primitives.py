@@ -114,6 +114,8 @@ def build_authored_track(
     end_mils: tuple[float, float],
     width_mils: float,
     layer: int | str | PcbLayer = PcbLayer.TOP,
+    solder_mask_expansion_mils: float | None = None,
+    paste_mask_expansion_mils: float | None = None,
 ) -> AltiumPcbTrack:
     """
     Create a modern authored TRACK record from first principles.
@@ -126,6 +128,14 @@ def build_authored_track(
     track.end_x = track._to_internal_units(end_mils[0])
     track.end_y = track._to_internal_units(end_mils[1])
     track.width = track._to_internal_units(width_mils)
+    if solder_mask_expansion_mils is not None:
+        track.solder_mask_expansion = track._to_internal_units(
+            solder_mask_expansion_mils
+        )
+    if paste_mask_expansion_mils is not None:
+        track.paste_mask_expansion = track._to_internal_units(
+            paste_mask_expansion_mils
+        )
     track.v7_layer_id = legacy_layer_to_v7_save_id(legacy_layer)
     track._original_content_len = 49
     return track
@@ -151,6 +161,8 @@ def build_authored_arc(
     end_angle: float,
     width_mils: float,
     layer: int | str | PcbLayer = PcbLayer.TOP,
+    solder_mask_expansion_mils: float | None = None,
+    paste_mask_expansion_mils: float | None = None,
 ) -> AltiumPcbArc:
     """
     Create a modern authored ARC record from first principles.
@@ -164,6 +176,12 @@ def build_authored_arc(
     arc.start_angle = float(start_angle)
     arc.end_angle = float(end_angle)
     arc.width = arc._to_internal_units(width_mils)
+    if solder_mask_expansion_mils is not None:
+        arc.solder_mask_expansion = arc._to_internal_units(
+            solder_mask_expansion_mils
+        )
+    if paste_mask_expansion_mils is not None:
+        arc.paste_mask_expansion = arc._to_internal_units(paste_mask_expansion_mils)
     arc.v7_layer_id = legacy_layer_to_v7_save_id(legacy_layer)
     arc._original_content_len = 60
     return arc
@@ -187,6 +205,8 @@ def build_authored_fill(
     pos2_mils: tuple[float, float],
     rotation_degrees: float = 0.0,
     layer: int | str | PcbLayer = PcbLayer.TOP,
+    solder_mask_expansion_mils: float | None = None,
+    paste_mask_expansion_mils: float | None = None,
 ) -> AltiumPcbFill:
     """
     Create a modern authored FILL record from first principles.
@@ -206,8 +226,16 @@ def build_authored_fill(
     fill.user_routed = True
     fill.is_keepout = False
     fill.is_polygon_outline = False
-    fill.solder_mask_expansion = 0
-    fill.paste_mask_expansion = 0
+    fill.solder_mask_expansion = (
+        fill._to_internal_units(solder_mask_expansion_mils)
+        if solder_mask_expansion_mils is not None
+        else 0
+    )
+    fill.paste_mask_expansion = (
+        fill._to_internal_units(paste_mask_expansion_mils)
+        if paste_mask_expansion_mils is not None
+        else 0
+    )
     fill.keepout_restrictions = 0
     fill.v7_layer_id = legacy_layer_to_v7_save_id(legacy_layer)
     fill._original_content_len = 50
