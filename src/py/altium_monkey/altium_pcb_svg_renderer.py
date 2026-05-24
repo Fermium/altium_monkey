@@ -84,6 +84,8 @@ class PcbSvgRenderOptions:
     svg_display_scale: float = 1.0
     # Optional unit suffix for width/height attrs (e.g. "mm", "px"). Empty keeps unitless attrs.
     svg_size_unit: str = ""
+    # Include a root SVG viewBox in PCB millimeter coordinates.
+    include_view_box: bool = True
     # Polygon definitions from Polygons6/Data are debug/reference geometry, not
     # rendered copper. Keep disabled by default to avoid non-copper overlays in
     # layer outputs (especially imported designs with many polygon definitions).
@@ -967,8 +969,11 @@ class PcbSvgRenderer:
             'version="1.1"',
             f'width="{width_attr}"',
             f'height="{height_attr}"',
-            f'viewBox="0 0 {ctx.fmt(ctx.width_mm)} {ctx.fmt(ctx.height_mm)}"',
         ]
+        if self.options.include_view_box:
+            svg_attrs.append(
+                f'viewBox="0 0 {ctx.fmt(ctx.width_mm)} {ctx.fmt(ctx.height_mm)}"'
+            )
         if not self.options.include_metadata:
             return svg_attrs
 
@@ -1545,7 +1550,10 @@ class PcbSvgRenderer:
         layer_name_by_id = {
             int(layer.value): layer.to_json_name() for layer in all_layers_for_metadata
         }
-        layer_display_name_by_id = dict(layer_name_by_id)
+        layer_display_name_by_id = {
+            int(layer.value): layer.to_display_name()
+            for layer in all_layers_for_metadata
+        }
         layer_key_by_id = {layer_id: f"L{layer_id}" for layer_id in all_layer_ids}
         if has_drill_holes:
             layer_name_by_id[PCB_SVG_DRILLS_LAYER_ID] = PCB_SVG_DRILLS_LAYER_NAME
@@ -2331,7 +2339,9 @@ class PcbSvgRenderer:
     ) -> str:
         if not layer.is_copper():
             return layer_color
-        polygon_index = self._coerce_optional_int(getattr(primitive, "polygon_index", None))
+        polygon_index = self._coerce_optional_int(
+            getattr(primitive, "polygon_index", None)
+        )
         # Vendor custom pad shapes often arrive as unlinked copper regions.
         # Keep those in the layer color; only linked polygon pours use overlay color.
         if polygon_index is None or polygon_index in _UNLINKED_INDEX_SENTINELS:

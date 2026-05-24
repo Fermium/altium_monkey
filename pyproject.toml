@@ -19,6 +19,8 @@ dependencies = [
     "freetype-py",
     "uharfbuzz",
     "cadquery",
+    "lxml==6.0.2",
+    "lz4>=4.4.5",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

@@ -13,6 +13,7 @@ Use it when you need to:
 4. create or select a project variant
 5. resolve reachable SchDoc and PcbDoc paths
 6. run the project-associated OutJob through `prj.outjob().run(...)`
+7. inspect or set project class-generation policy used by Altium ECO flows
 
 ## Project Parameters
 
@@ -65,6 +66,36 @@ For minimal new projects, `AltiumPrjPcbBuilder` remains an acceptable public
 project-file convenience helper. It is not the same as the retired schematic
 fluent builders. It only writes project document membership and basic project
 configuration.
+
+## Class Generation
+
+`AltiumPrjPcb.class_generation_options` exposes the project-wide
+`[PrjClassGen]` policy that controls schematic/user-defined class transfer
+during Altium compile/ECO workflows. For schematic differential-pair directives,
+`net_class_manual_enabled=True` lets directive `ClassName` and
+`DifferentialPairClassName` values transfer into PCB `Classes6/Data`.
+
+```python
+from altium_monkey.altium_prjpcb import (
+    AltiumPrjPcb,
+    AltiumPrjPcbClassGenerationOptions,
+)
+
+prj = AltiumPrjPcb("project.PrjPcb")
+options = prj.class_generation_options
+
+prj.set_class_generation_options(
+    AltiumPrjPcbClassGenerationOptions(
+        net_class_manual_enabled=True,
+    )
+)
+prj.save("project.PrjPcb")
+```
+
+Per-document class-generation policy is available through
+`get_document_class_generation_options(...)` and
+`set_document_class_generation_options(...)`. Document lookup accepts a
+zero-based document index, project-relative path, or filename.
 
 ## OutJobs
 

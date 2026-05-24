@@ -162,7 +162,7 @@ class TrueTypeFont:
         self.typo_descender = abs(struct.unpack(">h", os2[70:72])[0])
 
         # fsSelection (offset 62, uint16) - bit 7 = USE_TYPO_METRICS
-        # When set, GDI+/.NET uses sTypoAscender/sTypoDescender instead of
+        # When set, platform text layout uses sTypoAscender/sTypoDescender instead of
         # usWinAscent/usWinDescent for cell height.  Variable fonts like
         # Bahnschrift set this flag.
         if len(os2) >= 64:

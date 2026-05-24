@@ -1,8 +1,6 @@
 """Schematic record model for SchRecordType.IMAGE."""
 
-import re
 from typing import Any, Protocol
-from xml.etree import ElementTree
 
 from .altium_sch_enums import Rotation90
 from .altium_record_types import (
@@ -16,6 +14,14 @@ from .altium_record_types import (
     rgb_to_win32_color,
 )
 from .altium_serializer import AltiumSerializer, Fields
+from .altium_sch_image_payload import (
+    SchEmbeddedImageFormat,
+    bmp_alpha_extrema,
+    decode_32bit_bmp_rgba,
+    decode_sch_embedded_image_payload,
+    detect_image_format,
+    image_size_px_from_data,
+)
 from .altium_sch_record_helpers import (
     CornerMilsMixin,
     detect_case_mode_method_from_dotted_uppercase_fields,
@@ -378,15 +384,9 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
         if not self.image_data or len(self.image_data) < 8:
             return None
 
-        # Use normalized uppercase format names.
-        if self.image_data[:8] == b"\x89PNG\r\n\x1a\n":
-            self.image_format = "PNG"
-        elif self.image_data[:2] == b"BM":
-            self.image_format = "BMP"
-        elif self.image_data[:2] == b"\xff\xd8":
-            self.image_format = "JPEG"
-        elif self.image_data[:6] in (b"GIF87a", b"GIF89a"):
-            self.image_format = "GIF"
+        image_format = detect_image_format(self.image_data)
+        if image_format is not None:
+            self.image_format = image_format.value
         else:
             self.image_format = None
 
@@ -452,6 +452,19 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
 
         return None
 
+    def _preferred_image_data(
+        self,
+        document_path: str | None = None,
+    ) -> tuple[bytes, SchEmbeddedImageFormat | None] | None:
+        original_data = self._try_load_original_file(document_path)
+        if original_data:
+            original_payload = decode_sch_embedded_image_payload(original_data)
+            return original_payload.preferred_data, original_payload.preferred_format
+        if not self.image_data:
+            return None
+        payload = decode_sch_embedded_image_payload(self.image_data)
+        return payload.preferred_data, payload.preferred_format
+
     def _convert_to_png(
         self,
         background_color: str | None = None,
@@ -461,78 +474,37 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
         """
         Convert image data to PNG format for SVG embedding.
 
-        SVG export converts all supported image formats to PNG before embedding,
-        regardless of their original format. This includes JPG, BMP, GIF,
-        EMF/WMF, and SVG inputs.
-
-        This means the base64 data in the SVG xlink:href is ALWAYS image/png,
-        never the original format. The background-to-alpha path uses a stable
-        PNG writer so native C++ and Python SVG output can match exactly even
-        when Pillow wheels are built with different zlib backends.
-
-        When the original file is available, prefer it over embedded bytes so
-        transparency and format metadata survive the conversion.
-
-        BACKGROUND-TO-ALPHA CONVERSION:
-        If the original file is not available, Altium stores images as BMP
-        internally (losing PNG alpha). We use the sheet background color as
-        a color key to restore transparency.
+        The renderer prefers native payload bytes from Altium embedded-image
+        wrappers. For example, an embedded PNG is stored as a BMP preview plus
+        `TdxPNGImage` plus the original PNG bytes; the PNG is the fidelity
+        source. Schematic background-color keying is intentionally not applied.
 
         Args:
-            background_color: Optional background color to convert to transparency
-                             (format: "#RRGGBB"). If provided, pixels matching this
-                             color (within tolerance) will become transparent.
-            alpha_tolerance: RGB distance tolerance for background matching (0-255).
-                            Pixels within this distance are made transparent.
+            background_color: Deprecated compatibility argument; ignored.
+            alpha_tolerance: Deprecated compatibility argument; ignored.
             document_path: Optional path to SchDoc for resolving relative image paths.
 
         Returns:
             PNG image data as bytes, or None if no image data
         """
-        # Try loading original file first (like native Altium does).
-        # The IR/direct SVG paths may still request sheet-color transparency
-        # for visually correct rendering, so do not early-return opaque PNG
-        # bytes when a background color key is active.
-        original_data = self._try_load_original_file(document_path)
-        if original_data:
-            # Check if it's already PNG
-            if original_data[:8] == b"\x89PNG\r\n\x1a\n" and not background_color:
-                return original_data
-            # Otherwise convert to PNG
-            import io
+        del background_color, alpha_tolerance
 
-            try:
-                from PIL import Image
-
-                img = Image.open(io.BytesIO(original_data))
-                if img.mode not in ("RGB", "RGBA"):
-                    img = (
-                        img.convert("RGBA")
-                        if "transparency" in img.info
-                        else img.convert("RGB")
-                    )
-                if background_color:
-                    img = self._apply_background_to_alpha(
-                        img, background_color, alpha_tolerance
-                    )
-                    return _save_rgba_image_as_stable_png(img)
-                output = io.BytesIO()
-                img.save(output, format="PNG")
-                return output.getvalue()
-            except Exception:
-                pass  # Fall through to embedded data
-
-        # Fall back to embedded data
-        if not self.image_data:
+        preferred = self._preferred_image_data(document_path)
+        if preferred is None:
             return None
+        source_data, image_format = preferred
 
-        # Detect format if not set
-        if not self.image_format:
-            self.detect_format()
-
-        # Already PNG - check if we need to apply background-to-alpha
-        if self.image_format == "PNG" and not background_color:
-            return self.image_data
+        if image_format == SchEmbeddedImageFormat.PNG:
+            return source_data
+        if image_format == SchEmbeddedImageFormat.BMP:
+            alpha_extrema = bmp_alpha_extrema(source_data)
+            if alpha_extrema is not None and alpha_extrema != (255, 255):
+                rgba_bmp = decode_32bit_bmp_rgba(source_data)
+            else:
+                rgba_bmp = None
+            if rgba_bmp is not None:
+                width, height, rgba_pixels = rgba_bmp
+                return _encode_rgba_png_pillow_style(rgba_pixels, width, height)
 
         # Convert using PIL
         import io
@@ -540,11 +512,10 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
         try:
             from PIL import Image
         except ImportError:
-            # PIL not available - return original data and hope browser can handle it
-            return self.image_data
+            return source_data
 
         try:
-            img = Image.open(io.BytesIO(self.image_data))
+            img = Image.open(io.BytesIO(source_data))
 
             # Convert to RGB(A) mode for PNG export
             if img.mode not in ("RGB", "RGBA"):
@@ -553,85 +524,58 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
                 else:
                     img = img.convert("RGB")
 
-            # Apply background-to-alpha conversion if requested
-            if background_color and img.mode in ("RGB", "RGBA"):
-                img = self._apply_background_to_alpha(
-                    img, background_color, alpha_tolerance
-                )
-                return _save_rgba_image_as_stable_png(img)
-
             # Save as PNG
             output = io.BytesIO()
             img.save(output, format="PNG")
             return output.getvalue()
         except Exception:
-            # Fallback: return original data
-            return self.image_data
+            return source_data
 
-    def _apply_background_to_alpha(
+    def _runtime_image_payload(
         self,
-        img: Any,
-        background_color: str,
-        tolerance: int,
-    ) -> Any:
+        document_path: str | None = None,
+    ) -> tuple[str, bytes] | None:
         """
-        Convert pixels matching background color to transparent.
-
-        Uses the sheet background color as a color key (like chroma key / green screen)
-        to restore transparency for images that lost their alpha channel when
-        Altium converted them to BMP.
-
-        Args:
-            img: PIL Image in RGB or RGBA mode
-            background_color: Color to make transparent ("#RRGGBB" format)
-            tolerance: RGB distance tolerance (0-255)
-
-        Returns:
-            PIL Image in RGBA mode with transparency applied. Existing alpha is
-            preserved for non-background pixels.
+        Return a browser-compatible image MIME type and payload for runtime SVG.
         """
-        import numpy as np
-        from PIL import Image
+        preferred = self._preferred_image_data(document_path)
+        if preferred is None:
+            return None
+        source_data, image_format = preferred
+        native_mime = self._mime_type_for_format(image_format)
+        if native_mime and image_format != SchEmbeddedImageFormat.BMP:
+            return (native_mime, source_data)
 
-        # Parse background color
-        if background_color.startswith("#"):
-            bg_r = int(background_color[1:3], 16)
-            bg_g = int(background_color[3:5], 16)
-            bg_b = int(background_color[5:7], 16)
-        else:
-            return img  # Can't parse, return unchanged
+        png_data = self._convert_to_png(document_path=document_path)
+        if png_data:
+            if detect_image_format(png_data) == SchEmbeddedImageFormat.PNG:
+                return ("image/png", png_data)
+            fallback_mime = self._mime_type_for_format(detect_image_format(png_data))
+            if fallback_mime:
+                return (fallback_mime, png_data)
 
-        # Convert to numpy array for fast processing
-        rgba_or_rgb = np.array(img)
-        if rgba_or_rgb.ndim != 3 or rgba_or_rgb.shape[2] not in (3, 4):
-            return img
-        rgb = rgba_or_rgb[:, :, :3]
-        alpha = (
-            rgba_or_rgb[:, :, 3].copy()
-            if rgba_or_rgb.shape[2] == 4
-            else np.full(rgb.shape[:2], 255, dtype=np.uint8)
-        )
+        fallback_mime = self._mime_type_for_format(image_format)
+        if fallback_mime:
+            return (fallback_mime, source_data)
+        return None
 
-        # Calculate distance from background color for each pixel
-        # Using simple RGB distance (faster than perceptual distance)
-        r_diff = np.abs(rgb[:, :, 0].astype(np.int16) - bg_r)
-        g_diff = np.abs(rgb[:, :, 1].astype(np.int16) - bg_g)
-        b_diff = np.abs(rgb[:, :, 2].astype(np.int16) - bg_b)
-
-        # Pixels within tolerance of background color
-        is_background = (
-            (r_diff <= tolerance) & (g_diff <= tolerance) & (b_diff <= tolerance)
-        )
-
-        # Create RGBA image with alpha channel
-        rgba = np.zeros((rgb.shape[0], rgb.shape[1], 4), dtype=np.uint8)
-        rgba[:, :, :3] = rgb
-        rgba[:, :, 3] = alpha
-
-        # Set matching pixels to transparent
-        rgba[is_background, 3] = 0
-
-        return Image.fromarray(rgba, "RGBA")
+    @staticmethod
+    def _mime_type_for_format(
+        image_format: SchEmbeddedImageFormat | None,
+    ) -> str | None:
+        if image_format == SchEmbeddedImageFormat.PNG:
+            return "image/png"
+        if image_format == SchEmbeddedImageFormat.JPEG:
+            return "image/jpeg"
+        if image_format == SchEmbeddedImageFormat.GIF:
+            return "image/gif"
+        if image_format == SchEmbeddedImageFormat.BMP:
+            return "image/bmp"
+        if image_format == SchEmbeddedImageFormat.SVG:
+            return "image/svg+xml"
+        if image_format == SchEmbeddedImageFormat.WEBP:
+            return "image/webp"
+        return None
 
     def _get_stroke_width(self) -> tuple[str, bool]:
         """
@@ -677,79 +621,13 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
         """
         if not self.image_data:
             return None
-        return self._get_image_size_px_from_data(self.image_data)
+        return decode_sch_embedded_image_payload(self.image_data).preferred_size_px
 
     def _get_image_size_px_from_data(self, data: bytes) -> tuple[int, int] | None:
         """
         Return image pixel size from raw bytes for raster or SVG sources.
         """
-        if not data:
-            return None
-
-        if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 24:
-            width = int.from_bytes(data[16:20], "big", signed=False)
-            height = int.from_bytes(data[20:24], "big", signed=False)
-            return (width, height)
-        if data[:2] == b"BM" and len(data) >= 26:
-            width = int.from_bytes(data[18:22], "little", signed=True)
-            height = abs(int.from_bytes(data[22:26], "little", signed=True))
-            return (width, height)
-        if data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 10:
-            width = int.from_bytes(data[6:8], "little", signed=False)
-            height = int.from_bytes(data[8:10], "little", signed=False)
-            return (width, height)
-        svg_size = self._get_svg_size_px_from_data(data)
-        if svg_size is not None:
-            return svg_size
-
-        try:
-            from io import BytesIO
-
-            from PIL import Image
-
-            with Image.open(BytesIO(data)) as img:
-                return tuple(int(v) for v in img.size)
-        except Exception:
-            return None
-
-    def _get_svg_size_px_from_data(self, data: bytes) -> tuple[int, int] | None:
-        """
-        Return intrinsic SVG size using width/height or viewBox when present.
-        """
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError:
-            text = data.decode("utf-8", errors="ignore")
-        if "<svg" not in text[:2048]:
-            return None
-
-        def _parse_dimension(value: str | None) -> int | None:
-            if not value:
-                return None
-            match = re.match(r"^\s*([0-9]+(?:\.[0-9]+)?)", value)
-            if not match:
-                return None
-            return int(float(match.group(1)))
-
-        try:
-            root = ElementTree.fromstring(text)
-        except ElementTree.ParseError:
-            root = None
-
-        if root is not None:
-            width = _parse_dimension(root.attrib.get("width"))
-            height = _parse_dimension(root.attrib.get("height"))
-            if width is not None and height is not None:
-                return (width, height)
-            view_box = root.attrib.get("viewBox")
-            if view_box:
-                parts = re.split(r"[,\s]+", view_box.strip())
-                if len(parts) == 4:
-                    try:
-                        return (int(float(parts[2])), int(float(parts[3])))
-                    except ValueError:
-                        pass
-        return None
+        return image_size_px_from_data(data)
 
     def _get_preferred_source_image_size_px(
         self,
@@ -895,9 +773,7 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
         bottom_units = max(dest_y1, dest_y2)
         unique_id = str(self.unique_id or "")
         extras = (
-            {"image_key": self.runtime_image_key(document_id)}
-            if not unique_id
-            else {}
+            {"image_key": self.runtime_image_key(document_id)} if not unique_id else {}
         )
         return SchGeometryRecord(
             handle=f"{document_id}\\{self.unique_id}",

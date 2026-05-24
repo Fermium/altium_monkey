@@ -84,6 +84,7 @@ class SchGeometrySvgRenderOptions:
     compile_mask_render_mode: SchCompileMaskRenderMode | None = None
     text_as_polygons: bool = False
     polygon_text_tolerance: float = 0.5
+    include_view_box: bool = True
 
 
 class SchGeometrySvgRenderer:
@@ -287,13 +288,27 @@ class SchGeometrySvgRenderer:
         lines: list[str] = []
         if self.options.include_xml_declaration:
             lines.append('<?xml version="1.0"  encoding="UTF-8" standalone="no"?>')
-        lines.append(
-            '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" '
-            'xmlns:xlink="http://www.w3.org/1999/xlink" '
-            'stroke-linecap="round" stroke-linejoin="round" fill="none" '
-            f'width="{_fmt_num(width_px)}" height="{_fmt_num(height_px)}" '
-            f'data-doc-id="{html.escape(doc_id)}" data-doc-ver="2">'
+        svg_attrs = [
+            'version="1.1"',
+            'xmlns="http://www.w3.org/2000/svg"',
+            'xmlns:xlink="http://www.w3.org/1999/xlink"',
+            'stroke-linecap="round"',
+            'stroke-linejoin="round"',
+            'fill="none"',
+            f'width="{_fmt_num(width_px)}"',
+            f'height="{_fmt_num(height_px)}"',
+        ]
+        if self.options.include_view_box:
+            svg_attrs.append(
+                f'viewBox="0 0 {_fmt_num(width_px)} {_fmt_num(height_px)}"'
+            )
+        svg_attrs.extend(
+            [
+                f'data-doc-id="{html.escape(doc_id)}"',
+                'data-doc-ver="2"',
+            ]
         )
+        lines.append(f"<svg {' '.join(svg_attrs)}>")
         lines.append('<g id = "scene" >')
 
         lines.append('<g id = "DocumentMainGroup" >')

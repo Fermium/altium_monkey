@@ -37,6 +37,18 @@ call site for now.
 3D STEP model bounds can be inferred when an embedded STEP payload is available.
 Explicit projection bounds remain supported for deterministic authored output.
 
+## SVG Rendering
+
+`AltiumPcbFootprint.to_svg(...)` and `to_layer_svgs(...)` accept
+`PcbSvgRenderOptions`. Footprint SVG output includes a root `viewBox` by
+default, computed from the footprint primitives in millimeter coordinates.
+Set `PcbSvgRenderOptions(include_view_box=False)` to omit only that root
+attribute.
+
+Layer keys and SVG filenames use stable `PcbLayer.to_json_name()` tokens.
+Use `PcbLayer.to_display_name()` only for default UI labels; PcbLib footprints
+do not have a board layer stack, so there is no board-specific rename source.
+
 ## Direct Record Edits
 
 Directly editing footprint primitive lists is an advanced escape hatch. It can

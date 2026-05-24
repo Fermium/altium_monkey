@@ -1,10 +1,12 @@
 """
-Altium PCB Net Class Record
+Altium PCB object class record.
 
-Parse net class definitions from Classes6/Data stream.
+Parse class definitions from `Classes6/Data`.
 
-Net classes group related objects (nets, components, pads, layers, etc.) together
-for applying design rules and organization.
+Despite the historical class name `AltiumPcbNetClass`, this stream stores
+multiple PCB object-class families: net classes, component classes, pad
+classes, layer classes, differential-pair classes, polygon classes, and
+from-to classes.
 """
 
 import logging
@@ -18,9 +20,10 @@ log = logging.getLogger(__name__)
 @dataclass
 class AltiumPcbNetClass:
     """
-    PCB net class definition.
+    PCB object class definition from `Classes6/Data`.
     
-    Net classes group objects (nets, components, pads, layers, polygons, etc.)
+    PCB object classes group objects (nets, components, pads, layers,
+    differential pairs, polygons, etc.)
     together for design rule application and organization.
     
     Attributes:
@@ -77,12 +80,6 @@ class AltiumPcbNetClass:
         except (ValueError, KeyError):
             net_class.kind = PcbNetClassKind.NET
 
-        # Parse member count
-        try:
-            net_class.member_count = int(record.get('MEMBERCOUNT', 0))
-        except ValueError:
-            net_class.member_count = 0
-
         # Parse members (M0, M1, M2, ...)
         members = []
         i = 0
@@ -91,6 +88,17 @@ class AltiumPcbNetClass:
             members.append(member)
             i += 1
         net_class.members = members
+
+        # Parse member count. Altium often omits MEMBERCOUNT even when M0, M1,
+        # ... member keys are present, so derive the public count from members
+        # when no explicit count exists.
+        if 'MEMBERCOUNT' in record:
+            try:
+                net_class.member_count = int(record.get('MEMBERCOUNT', 0))
+            except ValueError:
+                net_class.member_count = 0
+        else:
+            net_class.member_count = len(members)
 
         # Parse properties
         net_class.enabled = record.get('ENABLED', 'TRUE') == 'TRUE'
@@ -110,7 +118,8 @@ class AltiumPcbNetClass:
         # Update basic properties
         record['NAME'] = self.name
         record['KIND'] = str(int(self.kind))
-        record['MEMBERCOUNT'] = str(self.member_count)
+        member_count = len(self.members) if self.members else self.member_count
+        record['MEMBERCOUNT'] = str(member_count)
 
         # Update members
         for i, member in enumerate(self.members):

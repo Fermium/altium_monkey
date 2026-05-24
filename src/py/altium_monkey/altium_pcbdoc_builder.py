@@ -29,7 +29,12 @@ from .altium_pcb_stream_helpers import format_mil_value as _format_mil_value
 from .altium_pcb_stream_helpers import PcbKeyValueTextEntryMixin
 from .altium_ole import AltiumOleFile, AltiumOleWriter
 from .altium_board import AltiumBoard, AltiumBoardOutline, BoardOutlineVertex
-from .altium_pcb_enums import PcbGuidType, PcbIpc4761ViaType
+from .altium_pcb_enums import (
+    PcbGuidType,
+    PcbIpc4761ViaType,
+    PcbLibIdentifierKind,
+    PcbTextAutoposition,
+)
 from .altium_pcb_via_structure import (
     AltiumPcbViaStructure,
     AltiumPcbViaStructureLink,
@@ -48,6 +53,11 @@ from .altium_record_pcb__model import AltiumPcbModel
 from .altium_record_pcb__net import AltiumPcbNet
 from .altium_record_pcb__region import RegionVertex
 from .altium_record_pcb__netclass import AltiumPcbNetClass
+from .altium_record_pcb__differential_pair import (
+    AltiumPcbDifferentialPair,
+    build_differential_pair_stream,
+    parse_differential_pair_stream,
+)
 from .altium_pcb_enums import PadShape
 from .altium_record_types import PcbLayer
 from .altium_pcbdoc_builder_nets import (
@@ -2453,8 +2463,9 @@ class PcbDocClassesData:
         for index, member in enumerate(record.members):
             raw[f"M{index}"] = member
 
-        if record.member_count or "MEMBERCOUNT" in raw or record.members:
-            raw["MEMBERCOUNT"] = str(record.member_count)
+        member_count = len(record.members) if record.members else record.member_count
+        if member_count or "MEMBERCOUNT" in raw or record.members:
+            raw["MEMBERCOUNT"] = str(member_count)
         else:
             raw.pop("MEMBERCOUNT", None)
 
@@ -3016,6 +3027,11 @@ class PcbDocBuilder:
             if self.profile.nets_data is not None
             else parse_net_stream(self.profile.raw_streams["Nets6/Data"])
         )
+        self.differential_pairs = list(
+            parse_differential_pair_stream(
+                self.profile.raw_streams.get("DifferentialPairs6/Data", b"")
+            )
+        )
         self.components = list(
             parse_component_stream(
                 self.profile.raw_streams.get("Components6/Data", b"")
@@ -3133,6 +3149,7 @@ class PcbDocBuilder:
         self._components_dirty = False
         self._component_parameters_dirty = False
         self._fills_dirty = False
+        self._differential_pairs_dirty = False
         self._models_dirty = False
         self._pads_dirty = False
         self._component_bodies_dirty = False
@@ -3456,6 +3473,58 @@ class PcbDocBuilder:
             self._nets_dirty = True
         return self
 
+    def _find_differential_pair_index(self, name: str) -> int | None:
+        normalized = name.strip().upper()
+        for index, pair in enumerate(self.differential_pairs):
+            if pair.name.strip().upper() == normalized:
+                return index
+        return None
+
+    def add_differential_pair(
+        self,
+        *,
+        name: str,
+        positive_net_name: str,
+        negative_net_name: str,
+        gather_control: bool = False,
+        create_missing_nets: bool = True,
+    ) -> "PcbDocBuilder":
+        """
+        Add or update one `DifferentialPairs6/Data` pair object.
+        """
+        pair = AltiumPcbDifferentialPair.create(
+            name=name,
+            positive_net_name=positive_net_name,
+            negative_net_name=negative_net_name,
+            gather_control=gather_control,
+        )
+        if create_missing_nets:
+            self.add_net(pair.positive_net_name)
+            self.add_net(pair.negative_net_name)
+        elif self._find_net_index(pair.positive_net_name) is None:
+            raise ValueError(f"Unknown positive net: {pair.positive_net_name}")
+        elif self._find_net_index(pair.negative_net_name) is None:
+            raise ValueError(f"Unknown negative net: {pair.negative_net_name}")
+
+        existing_index = self._find_differential_pair_index(pair.name)
+        if existing_index is None:
+            self.differential_pairs.append(pair)
+        else:
+            existing = self.differential_pairs[existing_index]
+            pair._raw_record = dict(getattr(existing, "_raw_record", {}) or {})
+            pair.layer = existing.layer
+            pair.selected = existing.selected
+            pair.locked = existing.locked
+            pair.polygon_outline = existing.polygon_outline
+            pair.user_routed = existing.user_routed
+            pair.keepout = existing.keepout
+            pair.union_index = existing.union_index
+            if existing.unique_id:
+                pair.unique_id = existing.unique_id
+            self.differential_pairs[existing_index] = pair
+        self._differential_pairs_dirty = True
+        return self
+
     def add_component(
         self,
         *,
@@ -3467,11 +3536,24 @@ class PcbDocBuilder:
         source_footprint_library: str = "",
         name_on: bool = True,
         comment_on: bool = False,
-        name_auto_position: int = 1,
-        comment_auto_position: int = 3,
+        name_auto_position: PcbTextAutoposition | None = None,
+        comment_auto_position: PcbTextAutoposition | None = None,
         description: str = "",
         parameters: dict[str, str] | None = None,
         unique_id: str | None = None,
+        channel_offset: int | None = None,
+        source_designator: str | None = None,
+        source_unique_id: str = "",
+        source_hierarchical_path: str = "",
+        source_component_library: str = "",
+        source_component_library_identifier_kind: PcbLibIdentifierKind | None = None,
+        source_component_library_identifier: str = "",
+        source_lib_reference: str = "",
+        footprint_description: str = "",
+        lock_strings: bool | None = None,
+        enable_pin_swapping: bool | None = None,
+        enable_part_swapping: bool | None = None,
+        jumpers_visible: bool | None = True,
     ) -> int:
         component = build_authored_component(
             designator=designator,
@@ -3486,6 +3568,19 @@ class PcbDocBuilder:
             comment_auto_position=comment_auto_position,
             description=description,
             unique_id=unique_id,
+            channel_offset=channel_offset,
+            source_designator=source_designator,
+            source_unique_id=source_unique_id,
+            source_hierarchical_path=source_hierarchical_path,
+            source_component_library=source_component_library,
+            source_component_library_identifier_kind=source_component_library_identifier_kind,
+            source_component_library_identifier=source_component_library_identifier,
+            source_lib_reference=source_lib_reference,
+            footprint_description=footprint_description,
+            lock_strings=lock_strings,
+            enable_pin_swapping=enable_pin_swapping,
+            enable_part_swapping=enable_part_swapping,
+            jumpers_visible=jumpers_visible,
         )
         if parameters:
             component.parameters = {
@@ -4272,6 +4367,22 @@ class PcbDocBuilder:
                 "Components6/Header", struct.pack("<I", len(self.components))
             )
             streams["Components6/Data"] = self._streams.get("Components6/Data", b"")
+        if self._differential_pairs_dirty:
+            streams["DifferentialPairs6/Header"] = struct.pack(
+                "<I", len(self.differential_pairs)
+            )
+            streams["DifferentialPairs6/Data"] = build_differential_pair_stream(
+                self.differential_pairs
+            )
+        else:
+            streams["DifferentialPairs6/Header"] = self._streams.get(
+                "DifferentialPairs6/Header",
+                struct.pack("<I", len(self.differential_pairs)),
+            )
+            streams["DifferentialPairs6/Data"] = self._streams.get(
+                "DifferentialPairs6/Data",
+                build_differential_pair_stream(self.differential_pairs),
+            )
         if self._component_parameters_dirty:
             params_header, params_data = build_component_parameter_stream(
                 self.components

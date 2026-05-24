@@ -19,7 +19,11 @@ from pathlib import Path
 
 from .altium_api_markers import public_api
 
-from .altium_prjpcb import AltiumPrjPcb, NetIdentifierScope
+from .altium_prjpcb import (
+    AltiumPrjPcb,
+    AltiumPrjPcbClassGenerationOptions,
+    NetIdentifierScope,
+)
 
 
 def _normalize_project_document_path(path: Path | str) -> str:
@@ -91,10 +95,12 @@ class AltiumPrjPcbBuilder:
         *,
         net_identifier_scope: NetIdentifierScope = NetIdentifierScope.AUTOMATIC,
         open_outputs: bool = True,
+        class_generation_options: AltiumPrjPcbClassGenerationOptions | None = None,
     ) -> None:
         self.name = name
         self.net_identifier_scope = net_identifier_scope
         self.open_outputs = open_outputs
+        self.class_generation_options = class_generation_options
         self.documents: list[AltiumPrjPcbDocumentEntry] = []
 
     def clear_documents(self) -> AltiumPrjPcbBuilder:
@@ -112,6 +118,20 @@ class AltiumPrjPcbBuilder:
         Set the project-wide net identifier scope written to `HierarchyMode`.
         """
         self.net_identifier_scope = NetIdentifierScope(int(scope))
+        return self
+
+    def set_class_generation_options(
+        self,
+        options: AltiumPrjPcbClassGenerationOptions,
+    ) -> AltiumPrjPcbBuilder:
+        """
+        Set project-wide class-generation policy for generated `.PrjPcb` files.
+
+        Use this when a generated project must preserve Altium ECO behavior such
+        as transferring schematic user-defined net classes or differential-pair
+        classes into the PCB.
+        """
+        self.class_generation_options = options
         return self
 
     def add_document(
@@ -250,6 +270,8 @@ class AltiumPrjPcbBuilder:
             "Design", "HierarchyMode", str(int(self.net_identifier_scope))
         )
         project.config.set("Design", "OpenOutputs", "1" if self.open_outputs else "0")
+        if self.class_generation_options is not None:
+            project.set_class_generation_options(self.class_generation_options)
         project.documents = [
             {
                 "path": entry.path,

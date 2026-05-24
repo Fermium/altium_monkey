@@ -21,6 +21,8 @@ variant-aware or web-view rendering.
    friendly layer name before passing `visible_layers={...}` to the SVG options
 8. Overriding copper layer colors with `layer_colors={...}`
 9. Rendering drill holes in overlay mode with a green review color
+10. Using `PcbLayer.to_display_name()` as the default fallback label when a
+    parsed board does not provide a stack-specific layer name
 
 ## Layer Selection
 
@@ -50,6 +52,10 @@ output emits a `KEEPOUT` SVG. The resolver also resolves `"Keep-Out Layer"` to
 `svg_display_scale` changes the SVG `width` and `height` attributes. The SVG
 `viewBox` and geometry remain in millimeters so downstream CAD or viewer code can
 continue to reason in physical units.
+
+`PcbSvgRenderOptions(include_view_box=False)` omits only the root `viewBox`
+attribute. Layer keys, filenames, geometry, and enrichment metadata remain
+token-based.
 
 ## Run
 

@@ -79,6 +79,10 @@ from .altium_sch_component_insert_helpers import (
     merge_schlib_fonts,
     remap_font_ids,
 )
+from .altium_sch_image_payload import (
+    SchEmbeddedImageFormat,
+    decode_sch_embedded_image_payload,
+)
 from .altium_schdoc_info import (
     SchComponentInfo,
     SchCrossSheetConnectorInfo,
@@ -479,24 +483,33 @@ class AltiumSchDoc(JsonApplyMixin):
         return text or fallback
 
     @staticmethod
-    def _embedded_image_extension_from_data(data: bytes) -> str | None:
-        """
-        Infer the native embedded image file extension from payload bytes.
-        """
-        if data[:8] == b"\x89PNG\r\n\x1a\n":
+    def _embedded_image_extension_from_format(
+        image_format: SchEmbeddedImageFormat | None,
+    ) -> str | None:
+        if image_format == SchEmbeddedImageFormat.PNG:
             return ".png"
-        if data[:2] == b"BM":
+        if image_format == SchEmbeddedImageFormat.BMP:
             return ".bmp"
-        if data[:2] == b"\xff\xd8":
+        if image_format == SchEmbeddedImageFormat.JPEG:
             return ".jpg"
-        if data[:6] in (b"GIF87a", b"GIF89a"):
+        if image_format == SchEmbeddedImageFormat.GIF:
             return ".gif"
-        if data[:12] == b"RIFF" and data[8:12] == b"WEBP":
+        if image_format == SchEmbeddedImageFormat.WEBP:
             return ".webp"
-        head = data[:256].lstrip()
-        if head.startswith(b"<svg") or head.startswith(b"<?xml"):
+        if image_format == SchEmbeddedImageFormat.SVG:
             return ".svg"
         return None
+
+    @staticmethod
+    def _embedded_image_payload_for_output(data: bytes) -> tuple[bytes, str | None]:
+        """
+        Return the native preferred payload bytes and detected file extension.
+        """
+        payload = decode_sch_embedded_image_payload(data)
+        extension = AltiumSchDoc._embedded_image_extension_from_format(
+            payload.preferred_format
+        )
+        return payload.preferred_data, extension
 
     @staticmethod
     def _embedded_image_output_name(image: AltiumSchImage, index: int) -> str:
@@ -506,7 +519,7 @@ class AltiumSchDoc(JsonApplyMixin):
         stem = AltiumSchDoc._sanitize_embedded_asset_name(stem, fallback)
 
         data = image.image_data or b""
-        extension = AltiumSchDoc._embedded_image_extension_from_data(data)
+        _, extension = AltiumSchDoc._embedded_image_payload_for_output(data)
         if extension is None and original_name:
             original_extension = Path(original_name).suffix.lower()
             if original_extension in {
@@ -534,10 +547,9 @@ class AltiumSchDoc(JsonApplyMixin):
         Extract embedded schematic IMAGE payloads to `output_dir`.
 
         Files are written as `<index:03d>__<source stem>.<detected ext>`.
-        The extension is detected from the embedded bytes, not from the IMAGE
-        record's source filename. Native Altium commonly stores embedded
-        schematic images as BMP payloads even when the original source path was
-        a PNG or JPG.
+        Altium wrapper payloads are unwrapped first, so a BMP preview followed
+        by `TdxPNGImage` extracts as the native PNG bytes. Plain BMP payloads
+        remain BMP.
 
         Linked image records without embedded payload bytes are skipped.
         """
@@ -555,7 +567,8 @@ class AltiumSchDoc(JsonApplyMixin):
                 continue
             filename = self._embedded_image_output_name(image, index)
             image_path = output_path / filename
-            image_path.write_bytes(image.image_data)
+            output_data, _ = self._embedded_image_payload_for_output(image.image_data)
+            image_path.write_bytes(output_data)
             written.append(image_path)
             if verbose:
                 log.info("Extracted embedded image: %s", image_path.name)
@@ -4694,29 +4707,20 @@ class AltiumSchDoc(JsonApplyMixin):
                 image, "image_data", None
             ):
                 continue
-            background_color = None
-            alpha_tolerance = 5
-            if geometry_ctx.options.image_background_to_alpha:
-                from .altium_record_types import color_to_hex
-
-                background_color = color_to_hex(
-                    int(getattr(geometry_ctx, "sheet_area_color", 0xFFFFFF) or 0xFFFFFF)
-                )
-                alpha_tolerance = geometry_ctx.options.image_alpha_tolerance
-            png_data = image._convert_to_png(
-                background_color=background_color,
-                alpha_tolerance=alpha_tolerance,
+            runtime_payload = image._runtime_image_payload(
                 document_path=str(self.filepath) if self.filepath else None,
             )
-            if not png_data:
+            if runtime_payload is None:
                 continue
+            mime_type, image_data = runtime_payload
             runtime_key = (
                 image.runtime_image_key(doc_unique_id)
                 if hasattr(image, "runtime_image_key")
                 else str(getattr(image, "unique_id", "") or "")
             )
             runtime_image_hrefs[runtime_key] = (
-                "data:image/png;base64," + base64.b64encode(png_data).decode("ascii")
+                f"data:{mime_type};base64,"
+                + base64.b64encode(image_data).decode("ascii")
             )
         return runtime_image_hrefs
 
@@ -5219,6 +5223,7 @@ class AltiumSchDoc(JsonApplyMixin):
                 compile_mask_render_mode=render_options.compile_mask_render_mode,
                 text_as_polygons=render_options.text_as_polygons,
                 polygon_text_tolerance=render_options.polygon_text_tolerance,
+                include_view_box=render_options.include_view_box,
             )
         ).render(document)
 
@@ -6088,7 +6093,7 @@ class AltiumSchDoc(JsonApplyMixin):
         Uses raw storage entries if available (byte-perfect round-trip),
         otherwise falls back to recompressing image data.
 
-        Storage stream format (from Altium .NET source):
+        Storage stream format used by Altium schematic image storage:
         - Header record: 4-byte length + "|HEADER=Icon storage|Weight=N"
         - For each embedded object:
             - 4 bytes: binary header (record_size | 0x01000000)

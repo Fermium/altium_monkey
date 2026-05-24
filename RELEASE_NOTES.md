@@ -1,3 +1,225 @@
+# altium-monkey 2026.05.23 Release Notes
+
+Package version: `2026.5.23`
+
+`2026.05.23` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.23`.
+
+This release adds the first experimental Python Draftsman `.PCBDwf` API, promotes
+explicit PcbDoc differential-pair objects and component source metadata into the
+Python public API, improves schematic embedded-image payload handling, adds
+root `viewBox` controls for SVG output, and restores cumulative release-note
+history back to the first 2026.04 package version.
+
+## Initial Experimental Draftsman Support
+
+`AltiumDraftsmanDocument` now exposes a conservative Python API for Draftsman
+files. It can load raw XML and legacy LZ4-compressed `.PCBDwf` containers, write
+raw XML outputs, create a blank AD25-profile document, set the linked source
+PcbDoc filename, inspect pages/items, and preserve unsupported XML subtrees.
+
+The initial typed model includes:
+
+1. `AltiumDraftsmanPage`
+2. `AltiumDraftsmanItem`
+3. `AltiumDraftsmanNote`
+4. `AltiumDraftsmanNoteElement`
+5. `AltiumDraftsmanText`
+6. `AltiumDraftsmanPicture`
+7. `AltiumDraftsmanDocumentOptions`
+8. `DraftsmanColor`, `DraftsmanPoint`, `DraftsmanSize`, `DraftsmanRect`, and
+   `DraftsmanMargin`
+9. `DraftsmanFontStyle` and `DraftsmanFontDecoration`
+10. `DraftsmanStandardSheetSize`, `DraftsmanNoteBorderStyle`,
+    `DraftsmanHorizontalAlignment`, and `DraftsmanVerticalAlignment`
+
+New authored paths include `page.add_note(...)`, `page.add_text(...)`,
+`page.add_picture(...)`, document font-style lookup/reuse, page-size helpers,
+and visual placement helpers such as `page.point_from_top_left(...)` and
+`page.rect_centered(...)`.
+
+Three public examples were added:
+
+1. `draftsman_create_blank_project`
+2. `hello_draftsman`
+3. `draftsman_add_image`
+
+Draftsman support is experimental in this release. Unsupported objects remain
+raw XML and the API can change as more object families are promoted.
+
+## SVG Output Contract Updates
+
+Schematic, schematic-library, PcbDoc, and PcbLib SVG output now have documented
+root `viewBox` behavior. Normal output includes a root `viewBox`; render options
+expose `include_view_box=False` for strict comparison lanes or downstream
+compatibility paths that need width and height without a root `viewBox`.
+
+The public SVG contract now documents group structure, semantic `data-*`
+attributes, relationship JSON linkage for schematic renders, PCB layer metadata,
+and the PCB enrichment metadata payload.
+
+## PCB Layer Display Labels
+
+`PcbLayer.to_display_name()` now returns default human-facing PCB layer labels
+such as `Top Layer`, `Bottom Layer`, `Top Overlay`, and `Top Solder`, while
+`to_json_name()` remains the stable token API for machine-readable output.
+
+Parsed PcbDoc SVG output uses resolved board layer-stack display names when the
+board provides them and falls back to `PcbLayer.to_display_name()` otherwise.
+PcbLib footprints do not own a board layer stack, so footprint SVG output uses
+the default display labels.
+
+## PcbDoc Polygon Authoring Notes
+
+The C++ source tree now lets `PcbDocBuilder::add_region()` carry optional
+polygon realization linkage through `polygon_index`, `subpoly_index`, and
+`union_index`. This keeps authored region records able to preserve editable
+polygon relationships when callers know those indexes.
+
+The PcbDoc planning docs also separate typed polygon-pour field promotion from
+raw record preservation and polygon realization/linkage work, so later polygon
+modeling can proceed without overclaiming automatic repour behavior.
+
+## Improved SchDoc And SchLib Embedded Images
+
+Schematic image extraction and SVG rendering now prefer native payloads stored
+inside Altium image wrappers such as `TdxPNGImage` instead of falling back to
+BMP previews when a better original payload is available.
+
+The image path now preserves PNG and 32-bit BMP alpha and no longer treats the
+schematic background color as the normal transparency keying path. This improves
+visual fidelity for embedded logos and transparent schematic graphics while
+keeping extracted image assets closer to the original Altium payload.
+
+## New PcbDoc Differential-Pair APIs
+
+`AltiumPcbDoc` now parses `DifferentialPairs6/Data` into
+`pcbdoc.differential_pairs`. Each `AltiumPcbDifferentialPair` exposes:
+
+1. `name`
+2. `positive_net_name`
+3. `negative_net_name`
+4. `gather_control`
+5. `unique_id`
+
+Common lookup and authoring helpers are now available:
+
+1. `pcbdoc.get_differential_pair(name)`
+2. `pcbdoc.differential_pair_classes`
+3. `pcbdoc.differential_pairs_by_net_name`
+4. `pcbdoc.add_differential_pair(...)`
+5. `PcbDocBuilder.add_differential_pair(...)`
+
+The model keeps concrete differential-pair objects separate from
+differential-pair classes in `Classes6/Data`, signal classes, routing rules, and
+project suffix policy.
+
+## New PcbDoc Component Source Metadata APIs
+
+`AltiumPcbComponent` now exposes source and ECO provenance fields that are
+important for repeated sheets, channels, and board-to-schematic traceability:
+
+1. `channel_offset`
+2. `source_designator`
+3. `source_unique_id`
+4. `source_unique_id_segments`
+5. `source_hierarchical_path`
+6. `source_hierarchy_segments`
+7. `source_component_library`
+8. `source_component_library_identifier_kind`
+9. `source_component_library_identifier`
+10. `source_lib_reference`
+11. `footprint_description`
+
+Component designator/comment autoposition fields are now enum-backed through
+`PcbTextAutoposition`:
+
+1. `name_auto_position`
+2. `comment_auto_position`
+
+Optional component flags are also exposed where present:
+
+1. `lock_strings`
+2. `enable_pin_swapping`
+3. `enable_part_swapping`
+4. `jumpers_visible`
+
+`AltiumPcbDoc.add_component(...)` and `PcbDocBuilder.add_component(...)` accept
+these fields for authored components. Newly authored components no longer invent
+`NAMEAUTOPOSITION` or `COMMENTAUTOPOSITION` fields when callers do not supply
+explicit values.
+
+## Examples
+
+Two public PcbDoc examples were added:
+
+1. `pcbdoc_add_differential_pairs` creates a PcbDoc from scratch, adds
+   differential-pair objects with routed member nets, and saves a generated
+   board plus JSON summary.
+2. `pcbdoc_diff_pair_report` loads the RT Super C1 project, reads differential
+   pair objects and classes, prints a table, and writes JSON plus text reports.
+
+## Bug Fixes
+
+### Schematic Embedded Images Preserve Native Alpha Payloads
+
+Embedded schematic images with native alpha data now render and extract without
+forcing background-color keying. PNG payloads and 32-bit BMP payloads keep their
+alpha channel when the stored Altium wrapper provides it.
+
+### Draftsman Explicit Fonts Clear Document-Font Flags
+
+Draftsman note and text helper methods now clear the relevant `UseDocumentFont`
+flag when callers supply an explicit font style. This makes generated notes and
+text render with the requested font family, size, and decoration flags instead
+of silently falling back to the document default font.
+
+### Authored PcbDoc Components Do Not Invent Autoposition Fields
+
+Component authoring no longer emits default `NAMEAUTOPOSITION` or
+`COMMENTAUTOPOSITION` fields unless the caller supplies explicit enum values.
+This better matches Altium files where those fields are absent and avoids
+introducing board metadata that was not present in the source intent.
+
+### Release Notes Preserve Public History
+
+The public `RELEASE_NOTES.md` file now carries historical release sections back
+to `2026.04.15`. The Git tags already preserved this history, but the current
+branch's release-notes file only carried the latest two sections before this
+release.
+
+## Public API Compatibility
+
+Existing documented APIs remain compatible. This release adds new optional
+PcbDoc component and differential-pair fields and helpers. The component
+autoposition write behavior is more conservative for new authored components:
+fields are omitted unless explicitly supplied.
+
+Differential-pair object support reads and writes explicit PcbDoc pair objects.
+Naming-policy inference from `.PrjPcb` suffix declarations and broader PCB
+object-class/room modeling remain future work.
+
+Draftsman APIs are newly introduced and experimental. They are documented for
+the supported objects above, but the shape may change as dimensions, board
+views, generated tables, title blocks, and other Draftsman object families are
+modeled.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+No new functional gaps were introduced in this release. The PcbDoc object-model
+and authoring limitations described in the 2026.05.20 release notes still
+apply.
+
+---
+
 # altium-monkey 2026.05.22 Release Notes
 
 Package version: `2026.5.22`
@@ -67,9 +289,13 @@ validated on Python 3.13.
 
 ## Functional Gaps
 
-No new functional gaps were introduced in this release. The PcbDoc object-model
-and authoring limitations described in the 2026.05.20 release notes still
-apply.
+Draftsman support does not yet provide full typed coverage for dimensions,
+callouts, board fabrication/assembly views, generated tables, title-block
+templates, or LZ4 write output. Unsupported Draftsman XML is preserved rather
+than normalized.
+
+The PcbDoc object-model and authoring limitations described in the 2026.05.20
+release notes still apply.
 
 ---
 
@@ -301,3 +527,1071 @@ Basic package operation has also been checked on macOS, including baseline
 functional SVG font substitution. Linux coverage remains limited, and exact SVG
 font metrics may still vary by installed system fonts and local fallback
 behavior.
+
+---
+
+# altium-monkey 2026.05.18 Release Notes
+
+Package version: `2026.5.18`
+
+`2026.05.18` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.18`.
+
+This release is a focused parser and rendering follow-up after `2026.5.12`. It
+also carries forward the parser, extraction, rendering, and
+deterministic-output fixes from that release.
+
+## Bug Fixes
+
+### PCB SVG skips text records with no drawable glyph geometry
+
+PCB text records whose resolved glyphs produce no drawable geometry now emit no
+SVG path output. This prevents empty or placeholder text geometry from
+appearing when a font cannot provide visible outlines for a record.
+
+### Fixed-width PCB UTF-16 text fields decode safely
+
+Fixed-width UTF-16-LE PCB text fields now decode through a safer path that
+handles truncated or partially populated buffers defensively. This improves
+parsing robustness for board records that store text in fixed binary fields.
+
+### PcbLib footprint regions handle extended-vertex records
+
+Some footprint `Data` streams store shape-based region geometry under the
+standard `REGION` record discriminator while using the extended, arc-capable
+vertex layout. PcbLib extraction now detects that layout and preserves the
+shape-based region geometry instead of treating the payload as a simple region.
+
+### PCB metadata follows Windows-1252 text semantics
+
+PcbDoc and PcbLib pipe-text metadata now uses Windows-1252 encoding and
+decoding to match Altium's native serializer. This fixes footprint extraction
+and library authoring for real-world files that contain Windows-1252
+punctuation bytes such as `0x96` in footprint descriptions.
+
+The shared fix covers length-prefixed PCB text streams, PcbDoc board and record
+metadata, PcbLib footprint parameters, `ComponentParamsTOC`, `SectionKeys`,
+`Library/Data`, and footprint catalog names. Invalid source bytes are decoded
+with replacement, and write paths replace characters that cannot be represented
+in Windows-1252.
+
+### Schematic rendering handles template-owned parent-bound records
+
+`SchDoc.to_geometry()` and `SchDoc.to_svg()` no longer crash when a template
+contains parent-bound harness entries or sheet entries. These records are
+positioned through their parent harness connector or sheet symbol, so the
+generic template-child rendering path now skips them defensively instead of
+calling their geometry methods without parent context.
+
+### Schematic rendering respects component display modes
+
+Schematic rendering now filters component body and child primitives by the
+active Altium display mode. Multi-mode components no longer render inactive
+mode graphics on top of the selected mode.
+
+### Schematic image rendering uses stable runtime image keys
+
+Image records without a stored `UniqueID` now get stable runtime image keys
+during geometry and SVG rendering. This prevents collisions when multiple image
+records are present and keeps generated image href maps aligned with rendered
+geometry. The image pipeline also has a more stable PNG path for background
+color to alpha conversion.
+
+### Schematic symbol extraction preserves designators
+
+`altium_schdoc_symbol_extractor` now preserves designator text when extracting
+symbol definitions from placed schematic components. Extracted symbols restore
+placed designators to their library-style prefix form, such as `R?` or `U?`,
+instead of dropping the designator during conversion.
+
+### Design and netlist JSON output is more deterministic
+
+Design JSON, netlist, and pick-and-place related output now uses stronger
+sorting and de-duplication for projects, components, variants, graphical
+references, terminals, aliases, endpoints, hierarchy paths, and PNP parameter
+maps. This reduces output jitter between runs and makes downstream diffs more
+stable.
+
+### SchLib preview parity improvements
+
+SchLib bounds, geometry, and SVG helpers now support display-mode selection for
+symbols with alternate graphics. SchLib SVG rendering also has an optional
+`pin_text_follows_orientation` mode for editor-style symbol previews, and empty
+symbol weighting is aligned with the canonical baseline used by the package.
+
+## Public API Compatibility
+
+Existing documented APIs remain compatible. The release adds optional keyword
+arguments for SchLib display-mode and pin-text preview behavior, so existing
+callers keep the previous defaults.
+
+Exact serialized ordering for design JSON, netlist, and PNP data may change in
+golden-file tests because output ordering is now more deterministic. PCB text
+metadata now normalizes Windows-1252 byte streams to Unicode strings on read and
+serializes those fields as Windows-1252 on write.
+
+We strive to maintain compatibility for documented public APIs between
+releases. The API surface may still change as more Altium capabilities are
+modeled, especially in areas listed as known functional gaps. Compatibility
+notes and migration guidance will be documented in release notes.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+### PcbDoc Mutation API
+
+The PcbDoc API is currently focused on parsing, extraction, rendering, and
+targeted authoring helpers.
+
+Known gaps:
+
+1. There is no generic `ObjectCollection`-style query API for PcbDoc yet.
+2. There is no public PcbDoc object deletion API yet.
+3. Existing PcbDoc mutations outside the high-level helper methods generally
+   require direct record-list edits. Treat those edits as advanced usage and
+   validate outputs in Altium Designer.
+
+The intended direction for a follow-up release is to bring the PcbDoc mutation
+surface closer to the SchDoc/SchLib object model.
+
+### IntLib Support
+
+Integrated libraries are extract-only in this release.
+
+Supported:
+
+1. Extract source files from an existing IntLib.
+2. Split extracted SchLib/PcbLib files when they contain multiple symbols or
+   footprints.
+3. Continue source extraction when component cross-reference metadata is
+   malformed but embedded source streams are still present.
+
+Not supported:
+
+1. Compile or build a new IntLib.
+2. Repackage modified sources back into an IntLib.
+3. Recover semantic component/model metadata when the source IntLib's
+   cross-reference stream cannot be parsed.
+
+### Hierarchical Designs And Annotation Files
+
+Complex hierarchical sheets, multi-channel designs, and designator resolution
+may have edge cases in `altium_design.py`.
+
+Altium Designer can store board-level annotation changes in `*.Annotation`
+files for cases such as device sheets and multi-channel designs. This release
+does not process those annotation files. Designs that depend on annotation-file
+mapping may need additional validation.
+
+Reference:
+
+https://www.altium.com/documentation/altium-designer/schematic/annotating-design-components#component-linking-with-unique-ids
+
+Please file an issue with a minimal reproducible project if you find a
+hierarchical design or annotation-resolution case that is not represented
+correctly.
+
+### Variant Processing
+
+Project variant support includes `ProjectVariantN` parsing, current-variant
+selection, DNP/not-fitted designator lists, raw variation rows, variant-level
+parameter rows, per-designator `ParamVariation` parameter overrides, and
+variant metadata in design JSON.
+
+`AltiumDesign.to_bom(variant=...)` applies parameter overrides to component
+parameter maps, display values, and descriptions while retaining DNP rows with a
+`dnp` flag. `AltiumDesign.to_pnp(variant=...)` omits DNP placements for the
+selected variant. Native BOM and PNP CLI output is checked against the Python
+variant behavior.
+
+Alternate fitted component rows are preserved in raw variant metadata but are
+not applied as semantic component replacements in BOM, netlist, PNP, or SVG
+output yet. Variant-aware schematic SVG presentation is also outside the core
+public API for this release.
+
+### Platform Coverage
+
+Primary release validation remains on Windows.
+
+Basic package operation has also been checked on macOS, including baseline
+functional SVG font substitution. Linux coverage remains limited, and exact SVG
+font metrics may still vary by installed system fonts and local fallback
+behavior.
+
+---
+
+# altium-monkey 2026.05.12 Release Notes
+
+Package version: `2026.5.12`
+
+`2026.05.12` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.12`.
+
+This release focuses on parser, extraction, rendering, and deterministic-output
+fixes that landed after `2026.5.8`.
+
+## Bug Fixes
+
+### PCB metadata follows Windows-1252 text semantics
+
+PcbDoc and PcbLib pipe-text metadata now uses Windows-1252 encoding and
+decoding to match Altium's native serializer. This fixes footprint extraction
+and library authoring for real-world files that contain Windows-1252
+punctuation bytes such as `0x96` in footprint descriptions.
+
+The shared fix covers length-prefixed PCB text streams, PcbDoc board and record
+metadata, PcbLib footprint parameters, `ComponentParamsTOC`, `SectionKeys`,
+`Library/Data`, and footprint catalog names. Invalid source bytes are decoded
+with replacement, and write paths replace characters that cannot be represented
+in Windows-1252.
+
+### Schematic rendering handles template-owned parent-bound records
+
+`SchDoc.to_geometry()` and `SchDoc.to_svg()` no longer crash when a template
+contains parent-bound harness entries or sheet entries. These records are
+positioned through their parent harness connector or sheet symbol, so the
+generic template-child rendering path now skips them defensively instead of
+calling their geometry methods without parent context.
+
+### Schematic rendering respects component display modes
+
+Schematic rendering now filters component body and child primitives by the
+active Altium display mode. Multi-mode components no longer render inactive
+mode graphics on top of the selected mode.
+
+### Schematic image rendering uses stable runtime image keys
+
+Image records without a stored `UniqueID` now get stable runtime image keys
+during geometry and SVG rendering. This prevents collisions when multiple image
+records are present and keeps generated image href maps aligned with rendered
+geometry. The image pipeline also has a more stable PNG path for background
+color to alpha conversion.
+
+### Schematic symbol extraction preserves designators
+
+`altium_schdoc_symbol_extractor` now preserves designator text when extracting
+symbol definitions from placed schematic components. Extracted symbols restore
+placed designators to their library-style prefix form, such as `R?` or `U?`,
+instead of dropping the designator during conversion.
+
+### Design and netlist JSON output is more deterministic
+
+Design JSON, netlist, and pick-and-place related output now uses stronger
+sorting and de-duplication for projects, components, variants, graphical
+references, terminals, aliases, endpoints, hierarchy paths, and PNP parameter
+maps. This reduces output jitter between runs and makes downstream diffs more
+stable.
+
+### SchLib preview parity improvements
+
+SchLib bounds, geometry, and SVG helpers now support display-mode selection for
+symbols with alternate graphics. SchLib SVG rendering also has an optional
+`pin_text_follows_orientation` mode for editor-style symbol previews, and empty
+symbol weighting is aligned with the canonical baseline used by the package.
+
+## Public API Compatibility
+
+Existing documented APIs remain compatible. The release adds optional keyword
+arguments for SchLib display-mode and pin-text preview behavior, so existing
+callers keep the previous defaults.
+
+Exact serialized ordering for design JSON, netlist, and PNP data may change in
+golden-file tests because output ordering is now more deterministic. PCB text
+metadata now normalizes Windows-1252 byte streams to Unicode strings on read and
+serializes those fields as Windows-1252 on write.
+
+We strive to maintain compatibility for documented public APIs between
+releases. The API surface may still change as more Altium capabilities are
+modeled, especially in areas listed as known functional gaps. Compatibility
+notes and migration guidance will be documented in release notes.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+### PcbDoc Mutation API
+
+The PcbDoc API is currently focused on parsing, extraction, rendering, and
+targeted authoring helpers.
+
+Known gaps:
+
+1. There is no generic `ObjectCollection`-style query API for PcbDoc yet.
+2. There is no public PcbDoc object deletion API yet.
+3. Existing PcbDoc mutations outside the high-level helper methods generally
+   require direct record-list edits. Treat those edits as advanced usage and
+   validate outputs in Altium Designer.
+
+The intended direction for a follow-up release is to bring the PcbDoc mutation
+surface closer to the SchDoc/SchLib object model.
+
+### IntLib Support
+
+Integrated libraries are extract-only in this release.
+
+Supported:
+
+1. Extract source files from an existing IntLib.
+2. Split extracted SchLib/PcbLib files when they contain multiple symbols or
+   footprints.
+3. Continue source extraction when component cross-reference metadata is
+   malformed but embedded source streams are still present.
+
+Not supported:
+
+1. Compile or build a new IntLib.
+2. Repackage modified sources back into an IntLib.
+3. Recover semantic component/model metadata when the source IntLib's
+   cross-reference stream cannot be parsed.
+
+### Hierarchical Designs And Annotation Files
+
+Complex hierarchical sheets, multi-channel designs, and designator resolution
+may have edge cases in `altium_design.py`.
+
+Altium Designer can store board-level annotation changes in `*.Annotation`
+files for cases such as device sheets and multi-channel designs. This release
+does not process those annotation files. Designs that depend on annotation-file
+mapping may need additional validation.
+
+Reference:
+
+https://www.altium.com/documentation/altium-designer/schematic/annotating-design-components#component-linking-with-unique-ids
+
+Please file an issue with a minimal reproducible project if you find a
+hierarchical design or annotation-resolution case that is not represented
+correctly.
+
+### Variant Processing
+
+Project variant support includes `ProjectVariantN` parsing, current-variant
+selection, DNP/not-fitted designator lists, raw variation rows, variant-level
+parameter rows, per-designator `ParamVariation` parameter overrides, and
+variant metadata in design JSON.
+
+`AltiumDesign.to_bom(variant=...)` applies parameter overrides to component
+parameter maps, display values, and descriptions while retaining DNP rows with a
+`dnp` flag. `AltiumDesign.to_pnp(variant=...)` omits DNP placements for the
+selected variant. Native BOM and PNP CLI output is checked against the Python
+variant behavior.
+
+Alternate fitted component rows are preserved in raw variant metadata but are
+not applied as semantic component replacements in BOM, netlist, PNP, or SVG
+output yet. Variant-aware schematic SVG presentation is also outside the core
+public API for this release.
+
+### Platform Coverage
+
+Primary release validation remains on Windows.
+
+Basic package operation has also been checked on macOS, including baseline
+functional SVG font substitution. Linux coverage remains limited, and exact SVG
+font metrics may still vary by installed system fonts and local fallback
+behavior.
+
+---
+
+# altium-monkey 2026.05.08 Release Notes
+
+Package version: `2026.5.8`
+
+`2026.05.08` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.8`.
+
+## Bug Fixes
+
+IntLib source extraction is more tolerant of vendor-generated integrated
+libraries with malformed `LibCrossRef.Txt` component metadata. `AltiumIntLib`
+now records the cross-reference parse failure on `component_parse_error` and
+continues to discover extractable `.SchLib`, `.PcbLib`, and `.PCB3DLib` source
+streams by scanning the OLE stream tree.
+
+PCB SVG rendering now keeps unlinked copper regions in the normal copper layer
+color. This improves previews for vendor custom pad shapes that arrive as
+unlinked `ShapeBasedRegion` or region primitives. Linked polygon pours still use
+the configured polygon overlay color.
+
+## Documentation
+
+The public docs now include an IntLib guide covering source extraction,
+metadata fallback behavior, and the extract-only support boundary.
+
+## Public API Compatibility
+
+The `AltiumIntLib.component_parse_error` property is additive. Existing IntLib
+code that reads `components`, `get_source_entries()`, `read_stream(...)`, or
+`extract_sources(...)` should continue to work.
+
+We strive to maintain compatibility for documented public APIs between
+releases. The API surface may still change as more Altium capabilities are
+modeled, especially in areas listed as known functional gaps. Compatibility
+notes and migration guidance will be documented in release notes.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+### PcbDoc Mutation API
+
+The PcbDoc API is currently focused on parsing, extraction, rendering, and
+targeted authoring helpers.
+
+Known gaps:
+
+1. There is no generic `ObjectCollection`-style query API for PcbDoc yet.
+2. There is no public PcbDoc object deletion API yet.
+3. Existing PcbDoc mutations outside the high-level helper methods generally
+   require direct record-list edits. Treat those edits as advanced usage and
+   validate outputs in Altium Designer.
+
+The intended direction for a follow-up release is to bring the PcbDoc mutation
+surface closer to the SchDoc/SchLib object model.
+
+### IntLib Support
+
+Integrated libraries are extract-only in this release.
+
+Supported:
+
+1. Extract source files from an existing IntLib.
+2. Split extracted SchLib/PcbLib files when they contain multiple symbols or
+   footprints.
+3. Continue source extraction when component cross-reference metadata is
+   malformed but embedded source streams are still present.
+
+Not supported:
+
+1. Compile or build a new IntLib.
+2. Repackage modified sources back into an IntLib.
+3. Recover semantic component/model metadata when the source IntLib's
+   cross-reference stream cannot be parsed.
+
+### Hierarchical Designs And Annotation Files
+
+Complex hierarchical sheets, multi-channel designs, and designator resolution
+may have edge cases in `altium_design.py`.
+
+Altium Designer can store board-level annotation changes in `*.Annotation`
+files for cases such as device sheets and multi-channel designs. This release
+does not process those annotation files. Designs that depend on annotation-file
+mapping may need additional validation.
+
+Reference:
+
+https://www.altium.com/documentation/altium-designer/schematic/annotating-design-components#component-linking-with-unique-ids
+
+Please file an issue with a minimal reproducible project if you find a
+hierarchical design or annotation-resolution case that is not represented
+correctly.
+
+### Variant Processing
+
+Variant processing includes DNP handling and parameter overrides for this
+release.
+
+Other variant behaviors, such as alternate fitted components and variant-aware
+SVG presentation, are not part of the core public API yet.
+
+### Platform Coverage
+
+Primary release validation has been on Windows.
+
+Linux and macOS testing is minimal for this release. The SVG font substitution
+path may need additional platform-specific validation because available system
+fonts and font fallback behavior vary by machine.
+
+---
+
+# altium-monkey 2026.05.07 Release Notes
+
+Package version: `2026.5.7`
+
+`2026.05.07` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.7`.
+
+## Bug Fixes
+
+IntLib source extraction is more tolerant of vendor-generated integrated
+libraries with malformed `LibCrossRef.Txt` component metadata. `AltiumIntLib`
+now records the cross-reference parse failure on `component_parse_error` and
+continues to discover extractable `.SchLib`, `.PcbLib`, and `.PCB3DLib` source
+streams by scanning the OLE stream tree.
+
+PCB SVG rendering now keeps unlinked copper regions in the normal copper layer
+color. This improves previews for vendor custom pad shapes that arrive as
+unlinked `ShapeBasedRegion` or region primitives. Linked polygon pours still use
+the configured polygon overlay color.
+
+## Documentation
+
+The public docs now include an IntLib guide covering source extraction,
+metadata fallback behavior, and the extract-only support boundary.
+
+Maintainer packaging notes were tightened without changing runtime APIs.
+
+## Public API Compatibility
+
+The `AltiumIntLib.component_parse_error` property is additive. Existing IntLib
+code that reads `components`, `get_source_entries()`, `read_stream(...)`, or
+`extract_sources(...)` should continue to work.
+
+We strive to maintain compatibility for documented public APIs between
+releases. The API surface may still change as more Altium capabilities are
+modeled, especially in areas listed as known functional gaps. Compatibility
+notes and migration guidance will be documented in release notes.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+### PcbDoc Mutation API
+
+The PcbDoc API is currently focused on parsing, extraction, rendering, and
+targeted authoring helpers.
+
+Known gaps:
+
+1. There is no generic `ObjectCollection`-style query API for PcbDoc yet.
+2. There is no public PcbDoc object deletion API yet.
+3. Existing PcbDoc mutations outside the high-level helper methods generally
+   require direct record-list edits. Treat those edits as advanced usage and
+   validate outputs in Altium Designer.
+
+The intended direction for a follow-up release is to bring the PcbDoc mutation
+surface closer to the SchDoc/SchLib object model.
+
+### IntLib Support
+
+Integrated libraries are extract-only in this release.
+
+Supported:
+
+1. Extract source files from an existing IntLib.
+2. Split extracted SchLib/PcbLib files when they contain multiple symbols or
+   footprints.
+3. Continue source extraction when component cross-reference metadata is
+   malformed but embedded source streams are still present.
+
+Not supported:
+
+1. Compile or build a new IntLib.
+2. Repackage modified sources back into an IntLib.
+3. Recover semantic component/model metadata when the source IntLib's
+   cross-reference stream cannot be parsed.
+
+### Hierarchical Designs And Annotation Files
+
+Complex hierarchical sheets, multi-channel designs, and designator resolution
+may have edge cases in `altium_design.py`.
+
+Altium Designer can store board-level annotation changes in `*.Annotation`
+files for cases such as device sheets and multi-channel designs. This release
+does not process those annotation files. Designs that depend on annotation-file
+mapping may need additional validation.
+
+Reference:
+
+https://www.altium.com/documentation/altium-designer/schematic/annotating-design-components#component-linking-with-unique-ids
+
+Please file an issue with a minimal reproducible project if you find a
+hierarchical design or annotation-resolution case that is not represented
+correctly.
+
+### Variant Processing
+
+Variant processing includes DNP handling and parameter overrides for this
+release.
+
+Other variant behaviors, such as alternate fitted components and variant-aware
+SVG presentation, are not part of the core public API yet.
+
+### Platform Coverage
+
+Primary release validation has been on Windows.
+
+Linux and macOS testing is minimal for this release. The SVG font substitution
+path may need additional platform-specific validation because available system
+fonts and font fallback behavior vary by machine.
+
+---
+
+# altium-monkey 2026.04.28 Release Notes
+
+Package version: `2026.4.28`
+
+`2026.04.28` is represented in Python package metadata as the PEP 440
+canonical form `2026.4.28`.
+
+## Bug Fixes
+
+Schematic sheet-symbol child labels now parse and preserve `IsHidden` records.
+
+This fixes hidden sheet names being emitted into schematic IR/SVG output when
+an Altium `SHEET_NAME` child record persisted `IsHidden=T`. `FILE_NAME` child
+records also preserve explicit `IsHidden` state during parse and serialization.
+
+The fix is intentionally narrow: base schematic labels continue to drop stale
+runtime-only hidden state, while sheet-symbol `SHEET_NAME` and `FILE_NAME`
+records keep the persisted visibility flag that Altium stores on those child
+records.
+
+## Changed Examples
+
+The dynamic template example now relies on the generated `.SchDot` for visual
+sheet setup, uses the exported `SheetStyle` enum, and applies templates with
+`apply_visual_sheet_settings=True`.
+
+## Documentation
+
+The README and docs index wording were refreshed to describe ongoing Linux and
+macOS coverage boundaries and current example-maintenance expectations.
+
+## Public API Compatibility
+
+We strive to maintain compatibility for documented public APIs between
+releases. The API surface may still change as more Altium capabilities are
+modeled, especially in areas listed as known functional gaps. Compatibility
+notes and migration guidance will be documented in release notes.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+### PcbDoc Mutation API
+
+The PcbDoc API is currently focused on parsing, extraction, rendering, and
+targeted authoring helpers.
+
+Known gaps:
+
+1. There is no generic `ObjectCollection`-style query API for PcbDoc yet.
+2. There is no public PcbDoc object deletion API yet.
+3. Existing PcbDoc mutations outside the high-level helper methods generally
+   require direct record-list edits. Treat those edits as advanced usage and
+   validate outputs in Altium Designer.
+
+The intended direction for a follow-up release is to bring the PcbDoc mutation
+surface closer to the SchDoc/SchLib object model.
+
+### IntLib Support
+
+Integrated libraries are extract-only in this release.
+
+Supported:
+
+1. Extract source files from an existing IntLib.
+2. Split extracted SchLib/PcbLib files when they contain multiple symbols or
+   footprints.
+
+Not supported:
+
+1. Compile or build a new IntLib.
+2. Repackage modified sources back into an IntLib.
+
+### Hierarchical Designs And Annotation Files
+
+Complex hierarchical sheets, multi-channel designs, and designator resolution
+may have edge cases in `altium_design.py`.
+
+Altium Designer can store board-level annotation changes in `*.Annotation`
+files for cases such as device sheets and multi-channel designs. This release
+does not process those annotation files. Designs that depend on annotation-file
+mapping may need additional validation.
+
+Reference:
+
+https://www.altium.com/documentation/altium-designer/schematic/annotating-design-components#component-linking-with-unique-ids
+
+Please file an issue with a minimal reproducible project if you find a
+hierarchical design or annotation-resolution case that is not represented
+correctly.
+
+### Variant Processing
+
+Variant processing includes DNP handling and parameter overrides for this
+release.
+
+Other variant behaviors, such as alternate fitted components and variant-aware
+SVG presentation, are not part of the core public API yet.
+
+### Platform Coverage
+
+Primary release validation has been on Windows.
+
+Linux and macOS testing is minimal for this release. The SVG font substitution
+path may need additional platform-specific validation because available system
+fonts and font fallback behavior vary by machine.
+
+---
+
+# altium-monkey 2026.04.27 Release Notes
+
+Package version: `2026.4.27`
+
+`2026.04.27` is represented in Python package metadata as the PEP 440
+canonical form `2026.4.27`.
+
+## Additions
+
+`AltiumDesign.to_json()` now emits `altium_monkey.design.a1`.
+
+The `a1` design payload adds schematic hierarchy data for downstream
+visualizers and project analysis tools. The new root `schematic_hierarchy`
+block includes:
+
+1. resolved source and compiled sheet documents
+2. sheet-symbol to child-sheet relationships
+3. hierarchy paths for repeated-channel and nested designs
+4. channel metadata, including repeat context when present
+5. sheet-entry to child-port links
+6. harness bundle links for flat and hierarchical harness traces
+7. unresolved hierarchy diagnostics
+
+Compiled net records now include source-owned semantic `endpoints` for
+schematic trace and overlay tools. Endpoint records describe pins, ports,
+sheet entries, power ports, and related electrical hotspots without requiring
+downstream tools to infer connectivity from rendered SVG IDs or label text.
+
+Project variants now expose variant parameter rows, per-designator parameter
+variation rows, and a normalized `parameter_overrides` map. BOM generation uses
+those overrides when resolving displayed component values.
+
+Schematic component records expose display-body and full-body bounds helpers.
+These are intended for renderers and hit-testers that need component body
+geometry without treating pins as part of the display body.
+
+`AltiumSchDoc.apply_template()` now accepts
+`apply_visual_sheet_settings=True`.
+
+Use this when a `.SchDot` should control the target schematic's visual page
+setup, not just its template-owned drawing objects.
+
+When enabled, the target sheet inherits these fields from the template sheet:
+
+1. sheet style and custom sheet dimensions
+2. custom zone and margin geometry
+3. border, title-block, and reference-zone visibility
+4. reference-zone style
+5. document border style and workspace orientation
+6. persisted display unit
+7. snap, visible, and hot-spot grid settings
+8. sheet line and area colors
+9. sheet-number spacing
+10. sheet system font, remapped into the target document font table
+
+The package root now exports these schematic sheet enums:
+
+1. `SheetStyle`
+2. `DocumentBorderStyle`
+3. `WorkspaceOrientation`
+
+## Compatibility
+
+`altium_monkey.design.a1` preserves the existing `a` family design payload
+shape and adds hierarchy/variant data. Existing consumers that require the
+exact `altium_monkey.design.a0` schema string should update their schema checks
+before consuming this release.
+
+`apply_visual_sheet_settings` defaults to `False`. Existing callers that
+already configure the target sheet before applying a template keep the previous
+behavior.
+
+Template identity and document identity state are still target-owned. The new
+visual sheet copy path does not copy template filename metadata, vault/release
+GUIDs, file identity, sheet number, or project/page parameters.
+
+## Changed Examples
+
+The dynamic template examples now use the generated `.SchDot` as the source of
+sheet context instead of duplicating sheet setup on the target document.
+
+`schdoc_apply_dynamic_template` now:
+
+1. builds generated ANSI B and ANSI D `.SchDot` templates
+2. applies each template with `apply_visual_sheet_settings=True`
+3. uses the exported `SheetStyle` enum instead of raw sheet-style integers
+
+`prjpcb_make_project` now:
+
+1. starts from a new `AltiumSchDoc()` instead of a shared blank SchDoc input
+2. applies its generated D-size `.SchDot` with
+   `apply_visual_sheet_settings=True`
+3. writes a generated project named `ULTRA-MONKEY`
+4. uses a grid-based title block with project and document parameter
+   expressions
+5. publishes only the schematic PDF through the OutJob publish medium
+6. keeps fabrication, assembly, netlist, BOM, and STEP outputs in the
+   generated-files medium
+
+## Public API Compatibility
+
+We strive to maintain compatibility for documented public APIs between
+releases. The API surface may still change as more Altium capabilities are
+modeled, especially in areas listed as known functional gaps. Compatibility
+notes and migration guidance will be documented in release notes.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+### PcbDoc Mutation API
+
+The PcbDoc API is currently focused on parsing, extraction, rendering, and
+targeted authoring helpers.
+
+Known gaps:
+
+1. There is no generic `ObjectCollection`-style query API for PcbDoc yet.
+2. There is no public PcbDoc object deletion API yet.
+3. Existing PcbDoc mutations outside the high-level helper methods generally
+   require direct record-list edits. Treat those edits as advanced usage and
+   validate outputs in Altium Designer.
+
+The intended direction for a follow-up release is to bring the PcbDoc mutation
+surface closer to the SchDoc/SchLib object model.
+
+### IntLib Support
+
+Integrated libraries are extract-only in this release.
+
+Supported:
+
+1. Extract source files from an existing IntLib.
+2. Split extracted SchLib/PcbLib files when they contain multiple symbols or
+   footprints.
+
+Not supported:
+
+1. Compile or build a new IntLib.
+2. Repackage modified sources back into an IntLib.
+
+### Hierarchical Designs And Annotation Files
+
+Complex hierarchical sheets, multi-channel designs, and designator resolution
+may have edge cases in `altium_design.py`.
+
+Altium Designer can store board-level annotation changes in `*.Annotation`
+files for cases such as device sheets and multi-channel designs. This release
+does not process those annotation files. Designs that depend on annotation-file
+mapping may need additional validation.
+
+Reference:
+
+https://www.altium.com/documentation/altium-designer/schematic/annotating-design-components#component-linking-with-unique-ids
+
+Please file an issue with a minimal reproducible project if you find a
+hierarchical design or annotation-resolution case that is not represented
+correctly.
+
+### Variant Processing
+
+Variant processing includes DNP handling and parameter overrides for this
+release.
+
+Other variant behaviors, such as alternate fitted components and variant-aware
+SVG presentation, are not part of the core public API yet.
+
+### Platform Coverage
+
+Primary release validation has been on Windows.
+
+Linux and macOS testing is minimal for this release. The SVG font substitution
+path may need additional platform-specific validation because available system
+fonts and font fallback behavior vary by machine.
+
+---
+
+# altium-monkey 2026.04.19 Release Notes
+
+Package version: `2026.4.19`
+
+`2026.04.19` is represented in Python package metadata as the PEP 440
+canonical form `2026.4.19`.
+
+### Additions
+
+`AltiumSchDoc.apply_template()` now accepts
+`apply_visual_sheet_settings=True`.
+
+Use this when a `.SchDot` should control the target schematic's visual page
+setup, not just its template-owned drawing objects.
+
+When enabled, the target sheet inherits these fields from the template sheet:
+
+1. sheet style and custom sheet dimensions;
+2. custom zone and margin geometry;
+3. border, title-block, and reference-zone visibility;
+4. reference-zone style;
+5. document border style and workspace orientation;
+6. persisted display unit;
+7. snap, visible, and hot-spot grid settings;
+8. sheet line and area colors;
+9. sheet-number spacing;
+10. sheet system font, remapped into the target document font table.
+
+The package root now exports these schematic sheet enums:
+
+1. `SheetStyle`
+2. `DocumentBorderStyle`
+3. `WorkspaceOrientation`
+
+### Compatibility
+
+`apply_visual_sheet_settings` defaults to `False`. Existing callers that
+already configure the target sheet before applying a template keep the previous
+behavior.
+
+Template identity and document identity state are still target-owned. The new
+visual sheet copy path does not copy template filename metadata, vault/release
+GUIDs, file identity, sheet number, or project/page parameters.
+
+### Changed Examples
+
+The dynamic template examples now use the generated `.SchDot` as the source of
+sheet context instead of duplicating sheet setup on the target document.
+
+`schdoc_apply_dynamic_template` now:
+
+1. builds generated ANSI B and ANSI D `.SchDot` templates;
+2. applies each template with `apply_visual_sheet_settings=True`;
+3. uses the exported `SheetStyle` enum instead of raw sheet-style integers.
+
+`prjpcb_make_project` now:
+
+1. starts from a new `AltiumSchDoc()` instead of a shared blank SchDoc input;
+2. applies its generated D-size `.SchDot` with
+   `apply_visual_sheet_settings=True`;
+3. writes a generated project named `ultra-monkey`;
+4. uses a grid-based title block with project and document parameter
+   expressions;
+5. publishes only the schematic PDF through the OutJob publish medium;
+6. keeps fabrication, assembly, netlist, BOM, and STEP outputs in the
+   generated-files medium.
+
+---
+
+# altium-monkey 2026.04.15 Release Notes
+
+Package version: `2026.4.15`
+
+`2026.04.15` is the first published release target. Python package metadata uses
+the PEP 440 canonical form `2026.4.15`.
+
+## Public API Compatibility
+
+We strive to maintain compatibility for documented public APIs between
+releases. The API surface may still change as more Altium capabilities are
+modeled, especially in areas listed as known functional gaps. Compatibility
+notes and migration guidance will be documented in release notes.
+
+## Supported Python Versions
+
+This release supports Python 3.11 and Python 3.12.
+
+Python 3.13 is not advertised yet. The core package may work on Python 3.13, but
+the CadQuery/OCCT/VTK dependency path used for STEP model bounds has not been
+validated on Python 3.13.
+
+## Functional Gaps
+
+### PcbDoc Mutation API
+
+The PcbDoc API is currently focused on parsing, extraction, rendering, and
+targeted authoring helpers.
+
+Known gaps:
+
+1. There is no generic `ObjectCollection`-style query API for PcbDoc yet.
+2. There is no public PcbDoc object deletion API yet.
+3. Existing PcbDoc mutations outside the high-level helper methods generally
+   require direct record-list edits. Treat those edits as advanced usage and
+   validate outputs in Altium Designer.
+
+The intended direction for a follow-up release is to bring the PcbDoc mutation
+surface closer to the SchDoc/SchLib object model.
+
+### IntLib Support
+
+Integrated libraries are extract-only in this release.
+
+Supported:
+
+1. Extract source files from an existing IntLib.
+2. Split extracted SchLib/PcbLib files when they contain multiple symbols or
+   footprints.
+
+Not supported:
+
+1. Compile or build a new IntLib.
+2. Repackage modified sources back into an IntLib.
+
+### Hierarchical Designs And Annotation Files
+
+Complex hierarchical sheets, multi-channel designs, and designator resolution
+may have edge cases in `altium_design.py`.
+
+Altium Designer can store board-level annotation changes in `*.Annotation`
+files for cases such as device sheets and multi-channel designs. This release
+does not process those annotation files. Designs that depend on annotation-file
+mapping may need additional validation.
+
+Reference:
+
+https://www.altium.com/documentation/altium-designer/schematic/annotating-design-components#component-linking-with-unique-ids
+
+Please file an issue with a minimal reproducible project if you find a
+hierarchical design or annotation-resolution case that is not represented
+correctly.
+
+### Variant Processing
+
+Variant processing is limited to DNP handling for this release.
+
+Other variant behaviors, such as alternate fitted components, parameter
+overrides, and variant-aware SVG presentation, are not part of the core public
+API yet.
+
+### Platform Coverage
+
+Primary release validation has been on Windows.
+
+Linux and macOS testing is minimal for this release. The SVG font substitution
+path may need additional platform-specific validation because available system
+fonts and font fallback behavior vary by machine.

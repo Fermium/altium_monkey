@@ -139,15 +139,10 @@ class SchSvgRenderOptions:
         SchCompileMaskRenderMode.ORACLE_RAW
     )
 
-    # Image background-to-alpha conversion
-    # True = convert pixels matching sheet background color to transparent (default)
-    # False = keep embedded BMP colors as-is (may show white background for PNGs with alpha)
-    #
-    # Background: Altium stores images as BMP internally, losing PNG alpha channels.
-    # When exporting SVG, native Altium reads the original file from disk (if available)
-    # to preserve transparency. Since we only have the embedded BMP, we use the sheet
-    # background color as a color key to restore transparency.
-    image_background_to_alpha: bool = True
+    # Deprecated compatibility switch. Normal Altium-parity image rendering uses
+    # real alpha from native embedded payloads and 32-bit BMP data; schematic
+    # background-color keying is not native behavior and is disabled by default.
+    image_background_to_alpha: bool = False
 
     # Tolerance for background color matching (0-255)
     # Pixels within this RGB distance from background color are made transparent
@@ -164,6 +159,9 @@ class SchSvgRenderOptions:
     # Smaller values produce smoother outlines with more vertices.
     polygon_text_tolerance: float = 0.5
 
+    # Include a root SVG viewBox in schematic pixel-canvas coordinates.
+    include_view_box: bool = True
+
     @classmethod
     def native_altium(cls) -> "SchSvgRenderOptions":
         """
@@ -174,6 +172,7 @@ class SchSvgRenderOptions:
             truncate_font_size_for_baseline=True,
             bezier_as_lines=True,  # Native Altium flattens beziers to ~32 line segments
             fallback_project_parameters_for_star=False,
+            include_view_box=False,
         )
 
     @classmethod

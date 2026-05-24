@@ -44,11 +44,15 @@ Domain guides:
 5. [PrjPcb](prjpcb.md)
 6. [AltiumDesign](altium_design.md)
 7. [IntLib](intlib.md)
+8. [Draftsman](draftsman.md)
 
 See the [examples index](examples/index.md) for the implemented sample set.
 
 See the [schemas](schemas/index.md) page for the public JSON and SVG metadata
 contracts emitted by `AltiumDesign`, `Netlist`, and PCB SVG rendering.
+
+See the [format contracts](format_contracts/index.md) page for stable file,
+API, and SVG behavior that downstream users can rely on.
 
 See the [API patterns](api_patterns/index.md) page for units, object mutation
 patterns, and higher-level API conventions.

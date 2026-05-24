@@ -2736,8 +2736,6 @@ class AltiumSchLib(JsonApplyMixin):
         """
         import base64
 
-        from .altium_record_types import color_to_hex
-
         runtime_image_hrefs: dict[str, str] = {}
         for image in symbol.images:
             if not self._record_belongs_to_part(image, part_id):
@@ -2753,27 +2751,20 @@ class AltiumSchLib(JsonApplyMixin):
                 records.append(geometry_record)
             if not getattr(image, "image_data", None):
                 continue
-            background_color = None
-            alpha_tolerance = 5
-            if ctx.options.image_background_to_alpha:
-                background_color = color_to_hex(
-                    int(getattr(ctx, "sheet_area_color", 0xFFFFFF) or 0xFFFFFF)
-                )
-                alpha_tolerance = ctx.options.image_alpha_tolerance
-            png_data = image._convert_to_png(
-                background_color=background_color,
-                alpha_tolerance=alpha_tolerance,
+            runtime_payload = image._runtime_image_payload(
                 document_path=str(self.filepath) if self.filepath else None,
             )
-            if not png_data:
+            if runtime_payload is None:
                 continue
+            mime_type, image_data = runtime_payload
             runtime_key = (
                 image.runtime_image_key(document_id)
                 if hasattr(image, "runtime_image_key")
                 else str(getattr(image, "unique_id", "") or "")
             )
             runtime_image_hrefs[runtime_key] = (
-                "data:image/png;base64," + base64.b64encode(png_data).decode("ascii")
+                f"data:{mime_type};base64,"
+                + base64.b64encode(image_data).decode("ascii")
             )
         return runtime_image_hrefs
 
@@ -2933,6 +2924,7 @@ class AltiumSchLib(JsonApplyMixin):
         part_id: int | None = None,
         display_mode: int | None = None,
         *,
+        options: SchSvgRenderOptions | None = None,
         pin_text_follows_orientation: bool = False,
     ) -> str:
         """
@@ -2953,6 +2945,7 @@ class AltiumSchLib(JsonApplyMixin):
             display_mode: For symbols with alternate display modes, render only
                           graphics/pins for this display mode. If None, renders
                           all display modes.
+            options: SchSvgRenderOptions for SVG compatibility/rendering controls.
 
         Returns:
             Complete SVG document as string
@@ -2964,7 +2957,12 @@ class AltiumSchLib(JsonApplyMixin):
             SchGeometrySvgRenderer,
             SchGeometrySvgRenderOptions,
         )
+        from .altium_sch_svg_renderer import SchSvgRenderOptions
 
+        render_options = options if options is not None else SchSvgRenderOptions()
+        ir_profile = (
+            "oracle" if render_options.truncate_font_size_for_baseline else "onscreen"
+        )
         ir_document = self.symbol_to_ir(
             symbol_name,
             width=width,
@@ -2974,14 +2972,27 @@ class AltiumSchLib(JsonApplyMixin):
             auto_fit=auto_fit,
             part_id=part_id,
             display_mode=display_mode,
-            profile="onscreen",
+            profile=ir_profile,
             pin_text_follows_orientation=pin_text_follows_orientation,
         )
         return SchGeometrySvgRenderer(
             SchGeometrySvgRenderOptions(
-                include_workspace_background=True,
+                include_workspace_background=getattr(
+                    render_options, "include_workspace_background", True
+                ),
                 workspace_background_color=background,
-                text_mode="onscreen",
+                include_xml_declaration=getattr(
+                    render_options, "include_xml_declaration", True
+                ),
+                text_mode=(
+                    "native_svg_export"
+                    if render_options.truncate_font_size_for_baseline
+                    else "onscreen"
+                ),
+                compile_mask_render_mode=render_options.compile_mask_render_mode,
+                text_as_polygons=render_options.text_as_polygons,
+                polygon_text_tolerance=render_options.polygon_text_tolerance,
+                include_view_box=render_options.include_view_box,
             )
         ).render(ir_document)
 
@@ -2992,6 +3003,7 @@ class AltiumSchLib(JsonApplyMixin):
         height: int = 600,
         padding: int = 50,
         background: str = "#FFFFFF",
+        options: SchSvgRenderOptions | None = None,
     ) -> dict[str, dict[int, str]]:
         """
         Render all symbols in the library to SVG.
@@ -3008,6 +3020,7 @@ class AltiumSchLib(JsonApplyMixin):
             height: SVG height in pixels
             padding: Padding around symbol in pixels
             background: Background color
+            options: SchSvgRenderOptions for SVG compatibility/rendering controls.
 
         Returns:
             Nested dict: {symbol_name: {part_id: svg_content}}
@@ -3038,6 +3051,7 @@ class AltiumSchLib(JsonApplyMixin):
                         height=height,
                         padding=padding,
                         background=background,
+                        options=options,
                         part_id=part_id if part_count > 1 else None,
                     )
                     results[symbol.name][part_id] = svg

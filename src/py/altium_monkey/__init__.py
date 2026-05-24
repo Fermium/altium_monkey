@@ -245,6 +245,8 @@ from .altium_pcb_enums import (
     PcbBarcodeKind,
     PcbBarcodeRenderMode,
     PcbIpc4761ViaType,
+    PcbLibIdentifierKind,
+    PcbTextAutoposition,
     PcbTextJustification,
     PcbTextKind,
     PcbViaStructureFeatureSide,
@@ -258,6 +260,7 @@ from .altium_record_pcb__polygon import AltiumPcbPolygon, PcbPolygonVertex
 from .altium_record_pcb__net import AltiumPcbNet
 from .altium_pcb_enums import PcbNetClassKind
 from .altium_record_pcb__netclass import AltiumPcbNetClass
+from .altium_record_pcb__differential_pair import AltiumPcbDifferentialPair
 from .altium_pcb_enums import PcbViaMode
 from .altium_pcb_via_structure import (
     AltiumPcbViaStructure,
@@ -448,6 +451,8 @@ __all__ = [
     "PcbBarcodeKind",
     "PcbBarcodeRenderMode",
     "PcbIpc4761ViaType",
+    "PcbLibIdentifierKind",
+    "PcbTextAutoposition",
     "PcbTextJustification",
     "AltiumPcbPad",
     "AltiumPcbText",
@@ -458,6 +463,7 @@ __all__ = [
     "PcbPolygonVertex",
     "AltiumPcbNet",
     "AltiumPcbNetClass",
+    "AltiumPcbDifferentialPair",
     "PcbNetClassKind",
     "AltiumPcbVia",
     "PcbViaMode",
@@ -485,6 +491,25 @@ __all__ = [
     "AltiumPcbDoc",
     "AltiumPcbLib",
     "AltiumPcbFootprint",
+    "AltiumDraftsmanDocument",
+    "AltiumDraftsmanPage",
+    "AltiumDraftsmanItem",
+    "AltiumDraftsmanNote",
+    "AltiumDraftsmanNoteElement",
+    "AltiumDraftsmanPicture",
+    "AltiumDraftsmanText",
+    "AltiumDraftsmanDocumentOptions",
+    "DraftsmanColor",
+    "DraftsmanFontDecoration",
+    "DraftsmanFontStyle",
+    "DraftsmanHorizontalAlignment",
+    "DraftsmanMargin",
+    "DraftsmanNoteBorderStyle",
+    "DraftsmanPoint",
+    "DraftsmanRect",
+    "DraftsmanSize",
+    "DraftsmanStandardSheetSize",
+    "DraftsmanVerticalAlignment",
     # SVG rendering
     "SchSvgRenderContext",
     "SchSvgRenderOptions",
@@ -524,6 +549,8 @@ _EXTRA_PUBLIC_SURFACES: dict[str, tuple[str, ...]] = {
     ),
     "altium_prjpcb": (
         "AltiumPrjPcb",
+        "AltiumPrjPcbClassGenerationOptions",
+        "AltiumPrjPcbDocumentClassGenerationOptions",
         "AltiumPrjPcbOutJob",
     ),
     "altium_prjscr": ("AltiumPrjScr",),
@@ -620,6 +647,101 @@ def __getattr__(name: str) -> Any:
 
         public_api(AltiumSchDoc)
         return AltiumSchDoc
+    if name == "AltiumDraftsmanDocument":
+        from .altium_draftsman import AltiumDraftsmanDocument
+
+        public_api(AltiumDraftsmanDocument)
+        return AltiumDraftsmanDocument
+    if name == "AltiumDraftsmanPage":
+        from .altium_draftsman import AltiumDraftsmanPage
+
+        public_api(AltiumDraftsmanPage)
+        return AltiumDraftsmanPage
+    if name == "AltiumDraftsmanItem":
+        from .altium_draftsman import AltiumDraftsmanItem
+
+        public_api(AltiumDraftsmanItem)
+        return AltiumDraftsmanItem
+    if name == "AltiumDraftsmanNote":
+        from .altium_draftsman import AltiumDraftsmanNote
+
+        public_api(AltiumDraftsmanNote)
+        return AltiumDraftsmanNote
+    if name == "AltiumDraftsmanNoteElement":
+        from .altium_draftsman import AltiumDraftsmanNoteElement
+
+        public_api(AltiumDraftsmanNoteElement)
+        return AltiumDraftsmanNoteElement
+    if name == "AltiumDraftsmanPicture":
+        from .altium_draftsman import AltiumDraftsmanPicture
+
+        public_api(AltiumDraftsmanPicture)
+        return AltiumDraftsmanPicture
+    if name == "AltiumDraftsmanText":
+        from .altium_draftsman import AltiumDraftsmanText
+
+        public_api(AltiumDraftsmanText)
+        return AltiumDraftsmanText
+    if name == "AltiumDraftsmanDocumentOptions":
+        from .altium_draftsman import AltiumDraftsmanDocumentOptions
+
+        public_api(AltiumDraftsmanDocumentOptions)
+        return AltiumDraftsmanDocumentOptions
+    if name == "DraftsmanColor":
+        from .altium_draftsman import DraftsmanColor
+
+        public_api(DraftsmanColor)
+        return DraftsmanColor
+    if name == "DraftsmanFontDecoration":
+        from .altium_draftsman import DraftsmanFontDecoration
+
+        public_api(DraftsmanFontDecoration)
+        return DraftsmanFontDecoration
+    if name == "DraftsmanFontStyle":
+        from .altium_draftsman import DraftsmanFontStyle
+
+        public_api(DraftsmanFontStyle)
+        return DraftsmanFontStyle
+    if name == "DraftsmanHorizontalAlignment":
+        from .altium_draftsman import DraftsmanHorizontalAlignment
+
+        public_api(DraftsmanHorizontalAlignment)
+        return DraftsmanHorizontalAlignment
+    if name == "DraftsmanMargin":
+        from .altium_draftsman import DraftsmanMargin
+
+        public_api(DraftsmanMargin)
+        return DraftsmanMargin
+    if name == "DraftsmanNoteBorderStyle":
+        from .altium_draftsman import DraftsmanNoteBorderStyle
+
+        public_api(DraftsmanNoteBorderStyle)
+        return DraftsmanNoteBorderStyle
+    if name == "DraftsmanPoint":
+        from .altium_draftsman import DraftsmanPoint
+
+        public_api(DraftsmanPoint)
+        return DraftsmanPoint
+    if name == "DraftsmanRect":
+        from .altium_draftsman import DraftsmanRect
+
+        public_api(DraftsmanRect)
+        return DraftsmanRect
+    if name == "DraftsmanSize":
+        from .altium_draftsman import DraftsmanSize
+
+        public_api(DraftsmanSize)
+        return DraftsmanSize
+    if name == "DraftsmanStandardSheetSize":
+        from .altium_draftsman import DraftsmanStandardSheetSize
+
+        public_api(DraftsmanStandardSheetSize)
+        return DraftsmanStandardSheetSize
+    if name == "DraftsmanVerticalAlignment":
+        from .altium_draftsman import DraftsmanVerticalAlignment
+
+        public_api(DraftsmanVerticalAlignment)
+        return DraftsmanVerticalAlignment
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

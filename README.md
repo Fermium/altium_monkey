@@ -134,7 +134,8 @@ The public docs are Markdown-first for this release:
 7. [IntLib](docs/intlib.md)
 8. [API patterns](docs/api_patterns/index.md)
 9. [Schema contracts](docs/schemas/index.md)
-10. [Examples](docs/examples/index.md)
+10. [Format contracts](docs/format_contracts/index.md)
+11. [Examples](docs/examples/index.md)
 
 The examples are the best starting point for public API usage. They are kept in
 [`examples/`](examples/) and are indexed from `examples/manifest.toml`.

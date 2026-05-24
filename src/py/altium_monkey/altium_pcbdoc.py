@@ -61,6 +61,10 @@ from .altium_record_pcb__track import AltiumPcbTrack
 from .altium_record_pcb__polygon import AltiumPcbPolygon
 from .altium_record_pcb__net import AltiumPcbNet
 from .altium_record_pcb__netclass import AltiumPcbNetClass
+from .altium_record_pcb__differential_pair import (
+    AltiumPcbDifferentialPair,
+    build_differential_pair_stream,
+)
 from .altium_record_types import PcbLayer
 from .altium_record_pcb__via import AltiumPcbVia
 from .altium_record_pcb__shapebased_region import (
@@ -73,7 +77,10 @@ from .altium_pcb_enums import (
     PcbBarcodeRenderMode,
     PcbBodyProjection,
     PcbIpc4761ViaType,
+    PcbLibIdentifierKind,
+    PcbNetClassKind,
     PcbRegionKind,
+    PcbTextAutoposition,
     PcbTextJustification,
     PcbTextKind,
 )
@@ -912,6 +919,7 @@ class AltiumPcbDoc:
         board: AltiumBoard (board origin and metadata)
         nets: List of AltiumPcbNet (net definitions with properties)
         net_classes: List of AltiumPcbNetClass (net class groupings)
+        differential_pairs: List of AltiumPcbDifferentialPair records
         polygons: List of AltiumPcbPolygon (polygon pour definitions)
 
         # Binary primitive geometry (Pads6, Tracks6, Arcs6, Texts6)
@@ -965,6 +973,7 @@ class AltiumPcbDoc:
             AltiumPcbNet
         ] = []  # Changed from list[str] to list[AltiumPcbNet]
         self.net_classes: list[AltiumPcbNetClass] = []
+        self.differential_pairs: list[AltiumPcbDifferentialPair] = []
         self.polygons: list[AltiumPcbPolygon] = []
         self.rules: list[AltiumPcbRule] = []
         self.dimensions: list[AltiumPcbDimension] = []
@@ -1031,6 +1040,7 @@ class AltiumPcbDoc:
             return
         self.components = builder.components
         self.nets = builder.nets
+        self.differential_pairs = builder.differential_pairs
         self.arcs = builder.arcs
         self.tracks = builder.tracks
         self.fills = builder.fills
@@ -1189,6 +1199,44 @@ class AltiumPcbDoc:
             if net.name.strip().upper() == normalized:
                 return net
         raise RuntimeError(f"Failed to add net: {name}")
+
+    def add_differential_pair(
+        self,
+        *,
+        name: str,
+        positive_net_name: str,
+        negative_net_name: str,
+        gather_control: bool = False,
+        create_missing_nets: bool = True,
+    ) -> AltiumPcbDifferentialPair:
+        """
+        Add or update a PCB differential-pair object.
+
+        Args:
+            name: Pair object name, such as `USB_D` or `TX0`.
+            positive_net_name: Positive member net name.
+            negative_net_name: Negative member net name.
+            gather_control: Raw Altium gather-control flag for uncoupled
+                differential-pair fanout handling.
+            create_missing_nets: When true, missing referenced nets are added
+                to `Nets6/Data` before the pair is authored.
+
+        Returns:
+            The authored or updated `AltiumPcbDifferentialPair`.
+        """
+        builder = self._ensure_authoring_builder()
+        builder.add_differential_pair(
+            name=name,
+            positive_net_name=positive_net_name,
+            negative_net_name=negative_net_name,
+            gather_control=gather_control,
+            create_missing_nets=create_missing_nets,
+        )
+        self._mirror_authoring_builder_state()
+        pair = self.get_differential_pair(name)
+        if pair is None:
+            raise RuntimeError(f"Failed to add differential pair: {name}")
+        return pair
 
     def add_embedded_model(
         self,
@@ -1647,11 +1695,24 @@ class AltiumPcbDoc:
         source_footprint_library: str | Path = "",
         name_on: bool = True,
         comment_on: bool = False,
-        name_auto_position: int = 1,
-        comment_auto_position: int = 3,
+        name_auto_position: PcbTextAutoposition | None = None,
+        comment_auto_position: PcbTextAutoposition | None = None,
         description: str = "",
         parameters: dict[str, str] | None = None,
         unique_id: str | None = None,
+        channel_offset: int | None = None,
+        source_designator: str | None = None,
+        source_unique_id: str = "",
+        source_hierarchical_path: str = "",
+        source_component_library: str = "",
+        source_component_library_identifier_kind: PcbLibIdentifierKind | None = None,
+        source_component_library_identifier: str = "",
+        source_lib_reference: str = "",
+        footprint_description: str = "",
+        lock_strings: bool | None = None,
+        enable_pin_swapping: bool | None = None,
+        enable_part_swapping: bool | None = None,
+        jumpers_visible: bool | None = True,
     ) -> AltiumPcbComponent:
         """
         Add a component placement record without placing footprint primitives.
@@ -1670,12 +1731,28 @@ class AltiumPcbDoc:
             source_footprint_library: Optional source PcbLib path/name metadata.
             name_on: Whether the designator text is visible.
             comment_on: Whether the comment/value text is visible.
-            name_auto_position: Native designator auto-position code.
-            comment_auto_position: Native comment auto-position code.
+            name_auto_position: Optional designator `PcbTextAutoposition`.
+            comment_auto_position: Optional comment `PcbTextAutoposition`.
             description: Optional component description.
             parameters: Optional component parameter dictionary.
             unique_id: Optional native component unique ID. Generated when
                 omitted by the underlying authoring flow.
+            channel_offset: Optional hierarchical/repeated-channel instance id.
+            source_designator: Optional original schematic designator. Defaults
+                to `designator` when omitted.
+            source_unique_id: Optional schematic source unique-id path.
+            source_hierarchical_path: Optional schematic hierarchy/channel path.
+            source_component_library: Optional source component library name.
+            source_component_library_identifier_kind: Optional Altium source
+                component-library identifier kind.
+            source_component_library_identifier: Optional source component
+                library identifier.
+            source_lib_reference: Optional source component library reference.
+            footprint_description: Optional source footprint description.
+            lock_strings: Optional component string-lock flag.
+            enable_pin_swapping: Optional component pin-swapping flag.
+            enable_part_swapping: Optional component part-swapping flag.
+            jumpers_visible: Optional component jumper-visibility flag.
 
         Returns:
             The authored `AltiumPcbComponent` placement record.
@@ -1695,6 +1772,19 @@ class AltiumPcbDoc:
             description=description,
             parameters=parameters,
             unique_id=unique_id,
+            channel_offset=channel_offset,
+            source_designator=source_designator,
+            source_unique_id=source_unique_id,
+            source_hierarchical_path=source_hierarchical_path,
+            source_component_library=source_component_library,
+            source_component_library_identifier_kind=source_component_library_identifier_kind,
+            source_component_library_identifier=source_component_library_identifier,
+            source_lib_reference=source_lib_reference,
+            footprint_description=footprint_description,
+            lock_strings=lock_strings,
+            enable_pin_swapping=enable_pin_swapping,
+            enable_part_swapping=enable_part_swapping,
+            jumpers_visible=jumpers_visible,
         )
         self._mirror_authoring_builder_state()
         return self.components[component_index]
@@ -2542,6 +2632,14 @@ class AltiumPcbDoc:
             label="net classes",
             record_factory=AltiumPcbNetClass.from_record,
             target=self.net_classes,
+            verbose=verbose,
+        )
+        self._parse_optional_record_collection(
+            ole,
+            section_name="DifferentialPairs6/Data",
+            label="differential pairs",
+            record_factory=AltiumPcbDifferentialPair.from_record,
+            target=self.differential_pairs,
             verbose=verbose,
         )
         self._parse_optional_record_collection(
@@ -3505,6 +3603,21 @@ class AltiumPcbDoc:
             if verbose:
                 log.info(f"  Writing Rules6/Data ({len(self.rules)} rules)...")
             writer.add_stream("Rules6/Data", self._serialize_rules())
+
+        if self.differential_pairs:
+            if verbose:
+                log.info(
+                    "  Writing DifferentialPairs6/Data (%d pairs)...",
+                    len(self.differential_pairs),
+                )
+            writer.add_stream(
+                "DifferentialPairs6/Header",
+                len(self.differential_pairs).to_bytes(4, byteorder="little"),
+            )
+            writer.add_stream(
+                "DifferentialPairs6/Data",
+                self._serialize_differential_pairs(),
+            )
 
         if self.dimensions:
             if verbose:
@@ -4485,6 +4598,12 @@ class AltiumPcbDoc:
             data.extend(encoded[4:])
         return bytes(data)
 
+    def _serialize_differential_pairs(self) -> bytes:
+        """
+        Serialize typed DifferentialPairs6/Data records.
+        """
+        return build_differential_pair_stream(self.differential_pairs)
+
     def _serialize_dimensions(self) -> bytes:
         """
         Serialize typed Dimensions6/Data records back to native type+leader+length+payload.
@@ -4628,6 +4747,43 @@ class AltiumPcbDoc:
             if polygon.net == net_index:
                 result["polygons"].append(polygon)
         return result
+
+    def get_differential_pair(
+        self,
+        name: str,
+    ) -> AltiumPcbDifferentialPair | None:
+        """
+        Return a differential pair by name, case-insensitively.
+        """
+        normalized = name.strip().upper()
+        for pair in self.differential_pairs:
+            if pair.name.strip().upper() == normalized:
+                return pair
+        return None
+
+    @property
+    def differential_pair_classes(self) -> list[AltiumPcbNetClass]:
+        """
+        Return `Classes6/Data` object classes whose members are pair names.
+        """
+        return [
+            pcb_class
+            for pcb_class in self.net_classes
+            if pcb_class.kind == PcbNetClassKind.DIFF_PAIR
+        ]
+
+    @property
+    def differential_pairs_by_net_name(self) -> dict[str, AltiumPcbDifferentialPair]:
+        """
+        Map each referenced net name to its differential-pair object.
+        """
+        pairs: dict[str, AltiumPcbDifferentialPair] = {}
+        for pair in self.differential_pairs:
+            if pair.positive_net_name:
+                pairs[pair.positive_net_name] = pair
+            if pair.negative_net_name:
+                pairs[pair.negative_net_name] = pair
+        return pairs
 
     def get_unique_footprints(self) -> set[str]:
         """

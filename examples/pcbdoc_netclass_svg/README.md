@@ -20,6 +20,8 @@ one HTML review page with the SVGs embedded inline.
 4. Rendering per-layer SVGs with `PcbSvgRenderOptions(svg_display_scale=10.0)`
 5. Using SVG `data-*` enrichment attributes to highlight a net class
 6. Writing simple standalone HTML review pages with inline SVG
+7. Keeping stable layer tokens separate from human-facing labels such as
+   `PcbLayer.to_display_name()`
 
 ## Styling
 

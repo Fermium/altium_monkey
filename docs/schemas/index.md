@@ -204,7 +204,7 @@ Important fields:
 6. `view.includes_board_outline`: true when board-outline geometry is present.
 7. `layers.all_layer_ids`: all known layer IDs in the rendered board context.
 8. `layers.layer_id_to_key`: stable layer keys such as `L1`, `L32`, or `DRILLS`.
-9. `layers.layer_id_to_name`: friendly layer names such as `TOP`, `BOTTOM`, or `DRILLS`.
+9. `layers.layer_id_to_name`: stable layer tokens such as `TOP`, `BOTTOM`, or `DRILLS`.
 10. `lookup.net_index_to_name`: net-index lookup table.
 11. `lookup.net_name_to_classes`: net-class membership by net name.
 12. `lookup.component_index_to_designator`: component-index lookup table.
@@ -214,7 +214,8 @@ Important fields:
 Element-level SVG metadata uses ordinary `data-*` attributes. Common attributes
 include:
 
-1. `data-layer-id`, `data-layer-key`, `data-layer-name`, and `data-layer-role`
+1. `data-layer-id`, `data-layer-key`, `data-layer-name`,
+   `data-layer-display-name`, and `data-layer-role`
 2. `data-net-index`, `data-net`, `data-net-class`, and `data-net-classes`
 3. `data-component-index`, `data-component`, and `data-component-uid`
 4. `data-feature="board-outline"` and `data-feature="board-cutout"`

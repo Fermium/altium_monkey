@@ -47,6 +47,51 @@ rotation, side, component kind, and parsed PcbDoc component parameters. Use this
 surface when a PCB-backed BOM or placement list should reflect what is actually
 placed on the board.
 
+Component source metadata is also exposed for boards produced from schematic
+compile/ECO flows. Use fields such as `channel_offset`, `source_designator`,
+`source_unique_id_segments`, `source_hierarchy_segments`,
+`source_component_library`, `source_lib_reference`, and
+`footprint_description` when repeated-sheet, channel, or library provenance is
+needed. Designator/comment autoposition uses the `PcbTextAutoposition` enum
+through `name_auto_position` and `comment_auto_position`; absent fields remain
+`None` rather than being invented by the writer.
+
+PCB classes are available through `pcbdoc.net_classes`. The historical
+`AltiumPcbNetClass` name is retained for compatibility, but `Classes6/Data`
+also stores component classes, pad classes, layer classes, polygon classes,
+from-to classes, and differential-pair classes. A differential-pair class has
+`kind == PcbNetClassKind.DIFF_PAIR`; its `members` are differential-pair names
+such as `TX0` or `RX0`, not the positive/negative net names.
+
+Concrete `DifferentialPairs6/Data` pair objects are available through
+`pcbdoc.differential_pairs`. Each `AltiumPcbDifferentialPair` exposes `name`,
+`positive_net_name`, `negative_net_name`, `gather_control`, and `unique_id`.
+Use `pcbdoc.get_differential_pair(name)`,
+`pcbdoc.differential_pairs_by_net_name`, and
+`pcbdoc.differential_pair_classes` for common lookup paths.
+
+```python
+pair = pcbdoc.get_differential_pair("USB_D")
+if pair is not None:
+    print(pair.positive_net_name, pair.negative_net_name)
+```
+
+New pair objects can be authored explicitly:
+
+```python
+pcbdoc.add_differential_pair(
+    name="USB_D",
+    positive_net_name="USB_D_P",
+    negative_net_name="USB_D_N",
+)
+pcbdoc.save("updated.PcbDoc")
+```
+
+`gather_control` is Altium's raw pair-level gather-control flag used around
+uncoupled differential-pair fanout handling. It is preserved and writable, but
+callers should keep the raw boolean meaning until their workflow has been
+verified in Altium Designer.
+
 ## Units
 
 Public PcbDoc authoring helpers use explicit `*_mils` parameter names. PCB
@@ -55,6 +100,23 @@ methods until metric helper functions are added.
 
 Low-level PCB record fields may expose Altium internal integer units. Prefer
 public helper methods for authored geometry.
+
+## SVG Rendering
+
+`AltiumPcbDoc.to_svg(...)`, `to_layer_svgs(...)`, and
+`to_board_outline_svg(...)` accept `PcbSvgRenderOptions`.
+
+Normal PCB SVG output includes a root `viewBox` in millimeter coordinates.
+Set `PcbSvgRenderOptions(include_view_box=False)` when a downstream consumer
+needs width and height without a root viewBox. This does not change geometry,
+layer keys, filenames, or metadata identifiers.
+
+Layer identifiers remain token-based. `PcbLayer.to_json_name()` returns stable
+tokens such as `TOP`, `BOTTOM`, and `TOPOVERLAY`. `PcbLayer.to_display_name()`
+returns default user-facing labels such as `Top Layer` and `Top Overlay`.
+For parsed PcbDoc files, prefer `ResolvedLayerStack` when actual board-specific
+layer names are required; SVG `data-layer-display-name` uses resolved names
+when available and falls back to `PcbLayer.to_display_name()`.
 
 ## Via Protection, Tenting, And Delay
 
@@ -159,14 +221,16 @@ Start with:
 9. [`pcbdoc_add_pad`](../examples/pcbdoc_add_pad/README.md)
 10. [`pcbdoc_add_hole_tolerances`](../examples/pcbdoc_add_hole_tolerances/README.md)
 11. [`pcbdoc_add_via_ipc4761_matrix`](../examples/pcbdoc_add_via_ipc4761_matrix/README.md)
-12. [`pcbdoc_mutate_via_ipc4761`](../examples/pcbdoc_mutate_via_ipc4761/README.md)
-13. [`pcbdoc_add_text`](../examples/pcbdoc_add_text/README.md)
-14. [`pcbdoc_add_filled_region`](../examples/pcbdoc_add_filled_region/README.md)
-15. [`pcbdoc_insert_nets_route`](../examples/pcbdoc_insert_nets_route/README.md)
-16. [`pcbdoc_insert_footprint_from_pcblib`](../examples/pcbdoc_insert_footprint_from_pcblib/README.md)
-17. [`pcbdoc_extract_pcblib`](../examples/pcbdoc_extract_pcblib/README.md)
-18. [`pcbdoc_extract_embedded_3d_models`](../examples/pcbdoc_extract_embedded_3d_models/README.md)
-19. [`pcbdoc_extract_embedded_fonts`](../examples/pcbdoc_extract_embedded_fonts/README.md)
+12. [`pcbdoc_add_differential_pairs`](../examples/pcbdoc_add_differential_pairs/README.md)
+13. [`pcbdoc_diff_pair_report`](../examples/pcbdoc_diff_pair_report/README.md)
+14. [`pcbdoc_mutate_via_ipc4761`](../examples/pcbdoc_mutate_via_ipc4761/README.md)
+15. [`pcbdoc_add_text`](../examples/pcbdoc_add_text/README.md)
+16. [`pcbdoc_add_filled_region`](../examples/pcbdoc_add_filled_region/README.md)
+17. [`pcbdoc_insert_nets_route`](../examples/pcbdoc_insert_nets_route/README.md)
+18. [`pcbdoc_insert_footprint_from_pcblib`](../examples/pcbdoc_insert_footprint_from_pcblib/README.md)
+19. [`pcbdoc_extract_pcblib`](../examples/pcbdoc_extract_pcblib/README.md)
+20. [`pcbdoc_extract_embedded_3d_models`](../examples/pcbdoc_extract_embedded_3d_models/README.md)
+21. [`pcbdoc_extract_embedded_fonts`](../examples/pcbdoc_extract_embedded_fonts/README.md)
 
 See [API patterns](api_patterns/index.md) for public vs careful mutation
 guidance.

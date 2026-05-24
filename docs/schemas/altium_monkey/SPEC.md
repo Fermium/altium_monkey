@@ -270,7 +270,7 @@ Required root fields:
 
 - `all_layer_ids`
 - `layer_id_to_key`
-- `layer_id_to_name`
+- `layer_id_to_name`: stable layer tokens such as `TOP`, `BOTTOM`, or `DRILLS`
 
 `lookup` contains:
 
@@ -295,4 +295,9 @@ Each component summary contains:
 Element-level SVG metadata uses ordinary `data-*` attributes. Common attributes
 include `data-layer-*`, `data-net-*`, `data-component-*`, `data-feature`, and
 drill-specific `data-hole-*` attributes.
+
+Layer element metadata keeps stable tokens and display labels separate:
+`data-layer-name` is token-oriented, while `data-layer-display-name` is the
+human-facing label. Parsed PcbDoc output uses resolved board layer-stack names
+when available and otherwise falls back to the default `PcbLayer` display label.
 

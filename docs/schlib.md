@@ -40,6 +40,14 @@ schlib.save("my_symbols.SchLib")
 For parsed libraries, prefer `AltiumSchLib.get_symbol(...)` and symbol views
 over scanning raw streams.
 
+## SVG Rendering
+
+`AltiumSchLib.symbol_to_svg(...)` and `to_svg(...)` accept
+`SchSvgRenderOptions`. Normal symbol SVG output includes a root `viewBox` in
+schematic pixel-canvas coordinates. Pass
+`SchSvgRenderOptions(include_view_box=False)` to omit only that root attribute
+while keeping the same geometry and symbol rendering path.
+
 ## Examples
 
 Start with:

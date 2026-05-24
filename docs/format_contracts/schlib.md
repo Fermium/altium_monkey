@@ -1,0 +1,39 @@
+# SchLib Contract
+
+`AltiumSchLib` is the public model for schematic symbol libraries.
+
+## Stable Surface
+
+- Parse existing `.SchLib` files.
+- Preserve unknown or unsupported data during normal read/write flows.
+- Create new schematic libraries.
+- Add, remove, merge, split, and find symbols.
+- Extract symbols from placed schematic components.
+- Render symbol SVG.
+
+## Object Ownership
+
+SchLib follows the same `ObjectCollection` ownership rules as SchDoc at the
+symbol level. `AltiumSchLib` owns symbols, and each symbol owns its records.
+Typed views are live filtered views, not independent mutable lists.
+
+Use symbol-owned mutation APIs such as `add_object(...)` for pins, component
+graphics, parameters, and related child records.
+
+## Units
+
+High-level public symbol-authoring APIs use mils. Low-level records may expose
+source storage units.
+
+## SVG
+
+`AltiumSchLib.symbol_to_svg(...)` and symbol `to_svg(...)` accept
+`SchSvgRenderOptions`. Normal output includes a root `viewBox`.
+
+See [SVG](svg.md) for the shared rendering contract.
+
+## Test Gates
+
+The SchLib contract is covered by symbol parsing, split/merge, extraction,
+authoring, SVG, public examples, and release signoff.
+
