@@ -11,6 +11,9 @@
 - Add common board primitives with high-level helper methods.
 - Add nets, net classes, differential pairs, components, footprints, vias,
   tracks, arcs, regions, pads, text, and component bodies.
+- Embed STEP models and infer component-body projection bounds through the core
+  `wn-geometer` dependency, with explicit projection overrides available for
+  deterministic authored geometry.
 - Read and write promoted via metadata such as IPC-4761 type, via feature
   rows, solder-mask tenting, hole tolerance, fabrication/assembly testpoint
   flags, and propagation delay.
@@ -29,6 +32,13 @@ or preservation work.
 
 High-level PCB helper methods use explicit `*_mils` parameter names. Low-level
 record fields may expose source integer storage units.
+
+## Embedded 3D Models
+
+STEP-derived component-body bounds use `wn-geometer`. If STEP bounds cannot be
+computed on the current host, authoring helpers may use an axis-aligned
+rectangle around available SMD/through-hole pads as a recovery projection. This
+fallback is not a replacement for STEP-derived model geometry.
 
 ## Layer Names
 

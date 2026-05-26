@@ -31,6 +31,7 @@ from .altium_pcb_extended_primitive_information import (
 )
 from .altium_ole import AltiumOleFile, AltiumOleWriter
 from .altium_pcb_enums import PadShape, PcbBodyProjection
+from .altium_pcb_pad_bounds import pad_projection_bounds_mils
 from .altium_pcb_step_bounds import compute_step_model_bounds_mils
 from .altium_record_types import PcbLayer, PcbRecordType
 from .altium_record_pcb__model import AltiumPcbModel
@@ -871,7 +872,10 @@ class AltiumPcbFootprint:
         authors that record while keeping the public API focused on the same
         controls exposed by the 3D Body properties dialog. If neither
         `bounds_mils` nor `projection_outline_mils` is supplied, the rectangular
-        projection is inferred from the embedded STEP payload using OCCT:
+        projection is inferred from the embedded STEP payload through
+        `wn-geometer`. If STEP bounds cannot be computed on the current host,
+        the projection falls back to an axis-aligned rectangle around all SMD
+        and through-hole pads in the footprint:
 
         - `bounds_mils`: `(left, bottom, right, top)` rectangular projection.
         - `projection_outline_mils`: footprint-local polygon vertices for a
@@ -879,8 +883,9 @@ class AltiumPcbFootprint:
 
         `overall_height_mils` maps to Altium's stored Overall Height. If it is
         omitted, it is inferred from the STEP `zmax` bound, and the body
-        standoff is inferred from STEP `zmin`. Explicit `projection_outline_mils`
-        can still be paired with inferred height.
+        standoff is inferred from STEP `zmin`. If STEP inference fails, omitted
+        height falls back to the model Z offset or zero. Explicit
+        `projection_outline_mils` can still be paired with inferred height.
 
         When projection geometry is inferred, `rotation_x_degrees`,
         `rotation_y_degrees`, and `rotation_z_degrees` are applied around the
@@ -896,7 +901,8 @@ class AltiumPcbFootprint:
         Args:
             model: `AltiumPcbModel` returned by `AltiumPcbLib.add_embedded_model(...)`.
             overall_height_mils: Optional Overall Height in mils. When omitted,
-                the height is inferred from STEP bounds.
+                the height is inferred from STEP bounds, or falls back to the
+                model Z offset/zero if STEP inference is unavailable.
             bounds_mils: Optional rectangular projection as `(left_mils,
                 bottom_mils, right_mils, top_mils)`.
             projection_outline_mils: Optional non-rectangular projection polygon
@@ -958,20 +964,39 @@ class AltiumPcbFootprint:
                     "bounds_mils/projection_outline_mils and overall_height_mils "
                     "explicitly, or use a model returned by add_embedded_model(...)."
                 )
-            inferred = compute_step_model_bounds_mils(
-                bytes(model_payload),
-                filename_hint=str(getattr(model, "name", "") or "model.step"),
-                rotation_x_degrees=resolved_rotation_x_degrees,
-                rotation_y_degrees=resolved_rotation_y_degrees,
-                rotation_z_degrees=resolved_rotation_z_degrees,
-                location_mils=(location_x_mils, location_y_mils),
-                z_offset_mils=resolved_model_z_offset_mils,
-            )
-            if needs_inferred_bounds:
-                bounds_mils = inferred.bounds_mils
-            if needs_inferred_height:
-                overall_height_mils = inferred.overall_height_mils
-            inferred_body_standoff_mils = inferred.min_z_mils
+            try:
+                inferred = compute_step_model_bounds_mils(
+                    bytes(model_payload),
+                    filename_hint=str(getattr(model, "name", "") or "model.step"),
+                    rotation_x_degrees=resolved_rotation_x_degrees,
+                    rotation_y_degrees=resolved_rotation_y_degrees,
+                    rotation_z_degrees=resolved_rotation_z_degrees,
+                    location_mils=(location_x_mils, location_y_mils),
+                    z_offset_mils=resolved_model_z_offset_mils,
+                )
+            except Exception as exc:
+                if needs_inferred_bounds:
+                    pad_bounds = pad_projection_bounds_mils(self.pads)
+                    if pad_bounds is None:
+                        raise ValueError(
+                            "Cannot infer STEP model bounds and this footprint "
+                            "has no SMD/through-hole pads for fallback bounds."
+                        ) from exc
+                    bounds_mils = pad_bounds
+                    log.warning(
+                        "Falling back to footprint pad bounds for %s after STEP "
+                        "bounds inference failed: %s",
+                        getattr(model, "name", "") or "model.step",
+                        exc,
+                    )
+                if needs_inferred_height:
+                    overall_height_mils = max(resolved_model_z_offset_mils, 0.0)
+            else:
+                if needs_inferred_bounds:
+                    bounds_mils = inferred.bounds_mils
+                if needs_inferred_height:
+                    overall_height_mils = inferred.overall_height_mils
+                inferred_body_standoff_mils = inferred.min_z_mils
 
         assert overall_height_mils is not None
 

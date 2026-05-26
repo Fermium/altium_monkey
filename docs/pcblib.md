@@ -34,8 +34,19 @@ Public PcbLib helper methods use explicit mil-unit parameter names. Metric
 package data is common for footprints, so convert millimeters to mils at the
 call site for now.
 
-3D STEP model bounds can be inferred when an embedded STEP payload is available.
-Explicit projection bounds remain supported for deterministic authored output.
+## Embedded 3D Models
+
+`AltiumPcbFootprint.add_embedded_3d_model(...)` can infer rectangular STEP
+projection bounds and overall height through `wn-geometer` when an embedded
+STEP payload is available.
+
+If STEP bounds cannot be computed on the current host, the helper can fall back
+to an axis-aligned rectangle around available SMD/through-hole pads. That
+fallback is intended to create a usable component-body projection; it is not a
+geometry-equivalent STEP import.
+
+Explicit `bounds_mils`, `projection_outline_mils`, and `overall_height_mils`
+remain supported for deterministic authored output.
 
 ## SVG Rendering
 

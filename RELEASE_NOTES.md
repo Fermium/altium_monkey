@@ -1,3 +1,74 @@
+# altium-monkey 2026.05.25 Release Notes
+
+Package version: `2026.5.25`
+
+`2026.05.25` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.25`.
+
+This release moves core PcbDoc/PcbLib STEP bounds inference from CadQuery to
+`wn-geometer`, removes unused direct runtime dependencies, and fixes
+`altium_cruncher megamaid` schematic embedded-image extraction edge cases.
+
+## STEP Bounds Dependency Cleanup
+
+PcbDoc and PcbLib embedded STEP model bounds now use
+`wn-geometer==2026.5.25`. Core `altium-monkey` no longer depends on CadQuery for
+embedded STEP model bounds. CadQuery remains an optional dependency for public
+examples that synthesize new STEP geometry, such as the power-resistor PcbLib
+sample.
+
+The current Geometer wheel coverage used by this release is Windows amd64,
+macOS arm64, and Linux x86_64 tagged `manylinux_2_39`. Older Linux glibc
+compatibility is not claimed for this release.
+
+`AltiumPcbDoc.add_embedded_3d_model(...)` and
+`AltiumPcbFootprint.add_embedded_3d_model(...)` still prefer STEP-derived
+bounds when callers omit explicit placement geometry. If STEP bounds cannot be
+computed on the current host, those helpers can now fall back to an
+axis-aligned rectangle around available SMD/through-hole pads. This fallback is
+for producing a usable component-body projection; it is not a replacement for
+STEP-derived model geometry.
+
+Explicit `bounds_mils`, `projection_outline_mils`, and `overall_height_mils`
+remain the deterministic override path when package geometry is known.
+
+## Runtime Dependency Cleanup
+
+The unused direct NumPy runtime dependency has been removed from
+`altium-monkey`. NumPy may still appear in developer workspaces, optional
+examples, or test environments through other packages, but it is no longer part
+of the core package install contract.
+
+## Embedded Image And CLI Fixes
+
+`altium_cruncher megamaid` schematic embedded-image extraction now handles
+Altium wrapper payloads without relying on a missing private
+`AltiumSchDoc` helper. The command writes the preferred native image bytes when
+they are available.
+
+The public schematic image boundary is now documented: use
+`AltiumSchDoc.extract_embedded_images(...)` for standalone image files, and
+treat `AltiumSchImage.image_data` as raw Storage payload for preservation.
+
+Native `altium_cruncher_native megamaid` schematic-image extraction has been
+aligned with Python so selected native/Python megamaid asset outputs stay
+byte-for-byte comparable for Hydroscope schematic images and embedded models.
+
+`altium_cruncher` CLI logging on Windows now avoids Unicode logging tracebacks
+when project filenames contain characters unsupported by a legacy console
+encoding.
+
+## Public API Compatibility
+
+Existing documented APIs remain compatible. The STEP inference implementation
+changed internally, and the runtime dependency set is smaller, but callers that
+already use explicit embedded-model placement geometry or normal inferred
+placement flows should not need code changes.
+
+Draftsman remains experimental as described in the 2026.05.24 release notes.
+
+---
+
 # altium-monkey 2026.05.24 Release Notes
 
 Package version: `2026.5.24`

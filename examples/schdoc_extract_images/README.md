@@ -38,3 +38,5 @@ written_paths = schdoc.extract_embedded_images(OUTPUT_IMAGES_DIR)
 IMAGE record as `<index>__<source stem>.<detected extension>`. Linked image
 records without embedded payload bytes are skipped. Plain BMP payloads remain
 BMP; wrapped PNG/JPEG/GIF/SVG/WebP payloads use the native payload extension.
+Avoid writing `image.image_data` directly for normal file export because it is
+the raw SchDoc Storage payload and may include Altium wrapper bytes.

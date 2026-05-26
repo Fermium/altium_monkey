@@ -163,7 +163,8 @@ Stable public patterns:
 - `AltiumSchDoc.from_file(...)`, `schdoc.add_object(...)`,
   `schdoc.remove_object(...)`, `schdoc.add_component_from_library(...)`,
   `schdoc.clear_template()`, `schdoc.apply_template(...)`,
-  `schdoc.extract_template(...)`, and `schdoc.save(...)`.
+  `schdoc.extract_template(...)`, `schdoc.extract_embedded_images(...)`, and
+  `schdoc.save(...)`.
 - `make_sch_*` factory functions, schematic enums, `SchPointMils`,
   `SchRectMils`, `SchFontSpec`, and `ColorValue`.
 - `AltiumSchLib`, `AltiumSymbol`, symbol helper methods, `split(...)`,
@@ -183,6 +184,9 @@ Stable public patterns:
 Use with care:
 
 - Direct edits to raw record fields when a higher-level property exists.
+- Direct use of `AltiumSchImage.image_data` as a standalone image file. It is
+  the raw SchDoc Storage payload and may contain Altium wrapper bytes; use
+  `schdoc.extract_embedded_images(...)` for normal image export.
 - Direct edits to PCB typed lists such as `pcbdoc.tracks` or `pcbdoc.pads`.
 - Manual management of `IndexInSheet`, `OwnerIndex`, font indexes, component
   indexes, net indexes, model checksums, stream names, or binary stream order.

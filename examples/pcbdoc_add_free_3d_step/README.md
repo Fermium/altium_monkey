@@ -9,7 +9,7 @@ workflow.
 1. `AltiumPcbDoc.add_embedded_model(...)`
 2. Native checksum generation for the embedded STEP payload
 3. `AltiumPcbDoc.add_embedded_3d_model(...)`
-4. Automatic STEP projection and height inference through OCCT/CadQuery
+4. Automatic STEP projection and height inference through `wn-geometer`
 5. Saving the modified board through `pcbdoc.save(...)`
 
 ## Run

@@ -814,7 +814,7 @@ outputs = [
   "pcblib_synthesize_power_resistor_lib/output/step_models/",
   "pcblib_synthesize_power_resistor_lib/output/synthesis_manifest.json",
 ]
-requires_extra = []
+requires_extra = ["examples"]
 tags = ["generation", "library", "footprint", "through-hole", "embedded-model", "step", "cadquery"]
 
 [[examples]]

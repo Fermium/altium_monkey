@@ -25,6 +25,7 @@ from .altium_pcb_extended_primitive_information import (
     AltiumPcbExtendedPrimitiveInformation,
     parse_extended_primitive_information_stream,
 )
+from .altium_pcb_pad_bounds import pad_projection_bounds_mils
 from .altium_pcb_step_bounds import compute_step_model_bounds_mils
 from .altium_pcb_custom_shapes import (
     AltiumPcbCustomShapeRecord,
@@ -1566,14 +1567,18 @@ class AltiumPcbDoc:
         Place an embedded PCB 3D model using Altium 3D Body dialog concepts.
 
         If neither `bounds_mils` nor `projection_outline_mils` is supplied, the
-        rectangular projection is inferred from the embedded STEP payload using
-        OCCT. `location_mils` and rotation arguments are applied to inferred
-        projection geometry. Explicit projection geometry is written as supplied.
+        rectangular projection is inferred from the embedded STEP payload
+        through `wn-geometer`. `location_mils` and rotation arguments are
+        applied to inferred projection geometry. Explicit projection geometry is
+        written as supplied. If STEP bounds cannot be computed on the current
+        host, the projection falls back to an axis-aligned rectangle around all
+        SMD and through-hole pads on the board.
 
         Args:
             model: `AltiumPcbModel` returned by `add_embedded_model(...)`.
             overall_height_mils: Optional Overall Height in mils. When omitted,
-                the height is inferred from STEP bounds.
+                the height is inferred from STEP bounds, or falls back to the
+                model Z offset/zero if STEP inference is unavailable.
             bounds_mils: Optional rectangular projection as `(left_mils,
                 bottom_mils, right_mils, top_mils)`.
             projection_outline_mils: Optional non-rectangular projection polygon
@@ -1634,20 +1639,39 @@ class AltiumPcbDoc:
                     "bounds_mils/projection_outline_mils and overall_height_mils "
                     "explicitly, or use a model returned by add_embedded_model(...)."
                 )
-            inferred = compute_step_model_bounds_mils(
-                bytes(model_payload),
-                filename_hint=str(getattr(model, "name", "") or "model.step"),
-                rotation_x_degrees=resolved_rotation_x_degrees,
-                rotation_y_degrees=resolved_rotation_y_degrees,
-                rotation_z_degrees=resolved_rotation_z_degrees,
-                location_mils=(location_x_mils, location_y_mils),
-                z_offset_mils=resolved_model_z_offset_mils,
-            )
-            if needs_inferred_bounds:
-                bounds_mils = inferred.bounds_mils
-            if needs_inferred_height:
-                overall_height_mils = inferred.overall_height_mils
-            inferred_body_standoff_mils = inferred.min_z_mils
+            try:
+                inferred = compute_step_model_bounds_mils(
+                    bytes(model_payload),
+                    filename_hint=str(getattr(model, "name", "") or "model.step"),
+                    rotation_x_degrees=resolved_rotation_x_degrees,
+                    rotation_y_degrees=resolved_rotation_y_degrees,
+                    rotation_z_degrees=resolved_rotation_z_degrees,
+                    location_mils=(location_x_mils, location_y_mils),
+                    z_offset_mils=resolved_model_z_offset_mils,
+                )
+            except Exception as exc:
+                if needs_inferred_bounds:
+                    pad_bounds = pad_projection_bounds_mils(self.pads)
+                    if pad_bounds is None:
+                        raise ValueError(
+                            "Cannot infer STEP model bounds and this board "
+                            "has no SMD/through-hole pads for fallback bounds."
+                        ) from exc
+                    bounds_mils = pad_bounds
+                    log.warning(
+                        "Falling back to board pad bounds for %s after STEP "
+                        "bounds inference failed: %s",
+                        getattr(model, "name", "") or "model.step",
+                        exc,
+                    )
+                if needs_inferred_height:
+                    overall_height_mils = max(resolved_model_z_offset_mils, 0.0)
+            else:
+                if needs_inferred_bounds:
+                    bounds_mils = inferred.bounds_mils
+                if needs_inferred_height:
+                    overall_height_mils = inferred.overall_height_mils
+                inferred_body_standoff_mils = inferred.min_z_mils
 
         assert overall_height_mils is not None
 

@@ -177,7 +177,12 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
     """
     IMAGE record.
 
-    Represents an embedded or linked image.
+    Represents an embedded or linked schematic image.
+
+    `image_data` stores the raw payload from the SchDoc Storage stream for
+    preservation. For some Altium files that payload is a BMP preview plus a
+    native image payload. Use `AltiumSchDoc.extract_embedded_images(...)` when
+    exporting standalone image files.
     """
 
     def __init__(self) -> None:
@@ -376,10 +381,15 @@ class AltiumSchImage(CornerMilsMixin, SchGraphicalObject):
 
     def detect_format(self) -> str | None:
         """
-        Detect image format from image_data header bytes.
+        Detect the raw `image_data` storage format from header bytes.
+
+        This method reports the format visible at the start of the stored
+        payload. Wrapped Altium images may therefore report `BMP` even though
+        the preferred export payload is PNG, JPEG, GIF, SVG, or WebP. Use
+        `AltiumSchDoc.extract_embedded_images(...)` when writing image files.
 
         Returns:
-            Format string ('PNG', 'BMP', 'JPEG', 'GIF') or None
+            Format string such as `PNG`, `BMP`, `JPEG`, or `GIF`, or None.
         """
         if not self.image_data or len(self.image_data) < 8:
             return None

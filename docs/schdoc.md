@@ -93,6 +93,13 @@ as `TdxPNGImage`, SVG rendering and `extract_embedded_images(...)` prefer the
 native payload so PNG alpha is preserved. Plain 32-bit BMP alpha is preserved
 when present; plain 24-bit BMP remains opaque.
 
+Use `schdoc.extract_embedded_images(output_dir)` when writing embedded images
+as standalone files. Direct `image.image_data` access is a preservation API: it
+returns the raw Storage payload and may include Altium wrapper bytes before the
+native image. Code that needs image files should not hash or write
+`image.image_data` directly unless it intentionally wants the exact stored
+payload.
+
 ## SVG Rendering
 
 `AltiumSchDoc.to_svg(...)` accepts `SchSvgRenderOptions`. Normal review output

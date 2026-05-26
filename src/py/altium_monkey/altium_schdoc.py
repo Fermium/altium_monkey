@@ -503,13 +503,31 @@ class AltiumSchDoc(JsonApplyMixin):
     @staticmethod
     def _embedded_image_payload_for_output(data: bytes) -> tuple[bytes, str | None]:
         """
-        Return the native preferred payload bytes and detected file extension.
+        Return export-ready embedded-image bytes and the matching extension.
+
+        Altium may store a placed IMAGE as a BMP preview followed by a native
+        payload such as `TdxPNGImage`. This internal helper returns the native
+        payload when one is present, otherwise it returns the raw storage bytes.
+
+        Public callers should normally use `extract_embedded_images(...)`
+        instead of writing `AltiumSchImage.image_data` directly.
         """
         payload = decode_sch_embedded_image_payload(data)
         extension = AltiumSchDoc._embedded_image_extension_from_format(
             payload.preferred_format
         )
         return payload.preferred_data, extension
+
+    @staticmethod
+    def _embedded_image_extension_from_data(data: bytes) -> str | None:
+        """
+        Return the extension for an export-ready embedded-image payload.
+
+        This is a private compatibility helper for package internals. It follows
+        the same wrapper-unwrapping rules as `_embedded_image_payload_for_output`.
+        """
+        _, extension = AltiumSchDoc._embedded_image_payload_for_output(data)
+        return extension
 
     @staticmethod
     def _embedded_image_output_name(image: AltiumSchImage, index: int) -> str:
@@ -552,6 +570,11 @@ class AltiumSchDoc(JsonApplyMixin):
         remain BMP.
 
         Linked image records without embedded payload bytes are skipped.
+
+        This is the public API to use when exporting image files. Direct access
+        to `AltiumSchImage.image_data` is intended for preservation and
+        round-trip work because it may contain Altium wrapper bytes rather than
+        a standalone image file.
         """
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)

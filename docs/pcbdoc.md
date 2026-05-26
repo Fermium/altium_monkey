@@ -101,6 +101,20 @@ methods until metric helper functions are added.
 Low-level PCB record fields may expose Altium internal integer units. Prefer
 public helper methods for authored geometry.
 
+## Embedded 3D Models
+
+`AltiumPcbDoc.add_embedded_3d_model(...)` can embed a STEP payload and create
+the matching component-body projection. When callers omit explicit placement
+geometry, STEP-derived rectangular bounds are inferred through `wn-geometer`.
+
+If STEP bounds cannot be computed on the current host, the helper can fall back
+to an axis-aligned rectangle around available SMD/through-hole pads. That
+fallback is a recovery projection for authoring a usable board body; it is not a
+geometry-equivalent STEP import.
+
+Use explicit `bounds_mils`, `projection_outline_mils`, and
+`overall_height_mils` when the package projection or height is known.
+
 ## SVG Rendering
 
 `AltiumPcbDoc.to_svg(...)`, `to_layer_svgs(...)`, and

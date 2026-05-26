@@ -99,20 +99,21 @@ def test_public_lockfile_matches_release_dependency_shape() -> None:
         dependency["name"] for dependency in altium_package.get("dependencies", [])
     }
     assert {
-        "cadquery",
         "freetype-py",
         "lxml",
         "lz4",
-        "numpy",
         "pillow",
         "uharfbuzz",
+        "wn-geometer",
     }.issubset(dependency_names)
+    assert "cadquery" not in dependency_names
 
     optional_dependency_names = {
         dependency["name"]
         for dependencies in altium_package.get("optional-dependencies", {}).values()
         for dependency in dependencies
     }
+    assert "cadquery" in optional_dependency_names
     assert "mkdocs" not in optional_dependency_names
 
 
