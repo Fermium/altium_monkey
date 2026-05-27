@@ -20,11 +20,13 @@ def _write_json(path: Path, payload: object) -> None:
 def _pnp_payload(
     *,
     source_pcbdoc: object,
+    position_mode: object,
     placements: list[object],
     units: str = "mm",
 ) -> dict[str, object]:
     return {
         "units": units,
+        "position_mode": position_mode,
         "source_pcbdoc": source_pcbdoc,
         "placements": [
             placement.to_json() if hasattr(placement, "to_json") else placement
@@ -51,7 +53,12 @@ def main() -> None:
 
     bom_only_pnp = _pnp_payload(
         source_pcbdoc=pnp_data["source_pcbdoc"],
-        placements=design.to_pnp(units="mm", exclude_no_bom=True),
+        position_mode=pnp_data["position_mode"],
+        placements=design.to_pnp(
+            units="mm",
+            exclude_no_bom=True,
+            position_mode=str(pnp_data["position_mode"]),
+        ),
     )
     bom_only_placements = bom_only_pnp["placements"]
     if not isinstance(bom_only_placements, list):
@@ -63,6 +70,7 @@ def main() -> None:
 
     print(f"Loaded project: {PROJECT_FILE.name}")
     print(f"Source PcbDoc: {pnp_data['source_pcbdoc']}")
+    print(f"PNP position mode: {pnp_data['position_mode']}")
     print(f"PNP placements: {len(placements)}")
     print(f"PNP placements excluding no-BOM components: {len(bom_only_placements)}")
     print("Wrote:")

@@ -51,7 +51,7 @@
       "$ref": "#/$defs/schematic_hierarchy"
     },
     "pnp": {
-      "$ref": "design_a0.schema.json#/$defs/pnp"
+      "$ref": "#/$defs/pnp"
     },
     "nets": {
       "type": "array",
@@ -116,6 +116,36 @@
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/parameter_map"
+          }
+        }
+      }
+    },
+    "pnp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "position_mode",
+        "source_pcbdoc",
+        "placements"
+      ],
+      "properties": {
+        "units": {
+          "const": "mm"
+        },
+        "position_mode": {
+          "enum": [
+            "altium-pick-place",
+            "component-origin"
+          ]
+        },
+        "source_pcbdoc": {
+          "type": "string"
+        },
+        "placements": {
+          "type": "array",
+          "items": {
+            "$ref": "design_a0.schema.json#/$defs/pnp_placement"
           }
         }
       }

@@ -548,6 +548,13 @@ _EXTRA_PUBLIC_SURFACES: dict[str, tuple[str, ...]] = {
         "normalize_project_parameters",
         "substitute_pcb_special_strings",
     ),
+    "altium_pnp_position": (
+        "PnpPositionMode",
+        "PNP_POSITION_MODE_ALTIUM_PICK_PLACE",
+        "PNP_POSITION_MODE_COMPONENT_ORIGIN",
+        "PNP_POSITION_MODES",
+        "normalize_pnp_position_mode",
+    ),
     "altium_prjpcb": (
         "AltiumPrjPcb",
         "AltiumPrjPcbClassGenerationOptions",

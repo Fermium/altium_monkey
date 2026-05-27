@@ -13,6 +13,12 @@ import zlib
 from .altium_api_markers import public_api
 from .altium_board import AltiumBoard, AltiumBoardOutline
 from .altium_component_kind import parse_component_kind
+from .altium_pnp_position import (
+    PNP_POSITION_MODE_ALTIUM_PICK_PLACE,
+    PNP_POSITION_MODE_COMPONENT_ORIGIN,
+    PnpPositionMode,
+    normalize_pnp_position_mode,
+)
 from .altium_embedded_files import (
     EmbeddedFont,
     EmbeddedModel,
@@ -4748,6 +4754,107 @@ class AltiumPcbDoc:
             if body.component_index == component_index:
                 result["component_bodies"].append(body)
         return result
+
+    def get_component_pick_place_center_mils(
+        self,
+        component_index: int,
+        *,
+        origin_relative: bool = True,
+    ) -> tuple[float, float]:
+        """
+        Return Altium-style pick-and-place center coordinates for a component.
+
+        Altium's Pick Place export uses the center of the bounding box formed
+        by the component-owned pad anchor points. Components with no owned pads
+        fall back to the component placement origin.
+
+        Args:
+            component_index: Zero-based index into `components`.
+            origin_relative: If True, subtract the board origin.
+
+        Returns:
+            ``(x_mils, y_mils)`` in mils.
+        """
+        if component_index < 0 or component_index >= len(self.components):
+            raise IndexError(f"component index out of range: {component_index}")
+
+        origin_x = self.board.origin_x if self.board and origin_relative else 0.0
+        origin_y = self.board.origin_y if self.board and origin_relative else 0.0
+
+        pad_xs: list[float] = []
+        pad_ys: list[float] = []
+        for pad in self.pads:
+            if pad.component_index != component_index:
+                continue
+            pad_xs.append(float(pad.x) / 10000.0)
+            pad_ys.append(float(pad.y) / 10000.0)
+
+        if pad_xs and pad_ys:
+            return (
+                (min(pad_xs) + max(pad_xs)) / 2.0 - origin_x,
+                (min(pad_ys) + max(pad_ys)) / 2.0 - origin_y,
+            )
+
+        return self.get_component_origin_mils(
+            component_index,
+            origin_relative=origin_relative,
+        )
+
+    def get_component_origin_mils(
+        self,
+        component_index: int,
+        *,
+        origin_relative: bool = True,
+    ) -> tuple[float, float]:
+        """
+        Return the PcbDoc component placement origin in mils.
+
+        Args:
+            component_index: Zero-based index into `components`.
+            origin_relative: If True, subtract the board origin.
+
+        Returns:
+            ``(x_mils, y_mils)`` in mils.
+        """
+        if component_index < 0 or component_index >= len(self.components):
+            raise IndexError(f"component index out of range: {component_index}")
+
+        origin_x = self.board.origin_x if self.board and origin_relative else 0.0
+        origin_y = self.board.origin_y if self.board and origin_relative else 0.0
+        component = self.components[component_index]
+        return (
+            component.get_x_mils(origin_x),
+            component.get_y_mils(origin_y),
+        )
+
+    def get_component_pnp_position_mils(
+        self,
+        component_index: int,
+        *,
+        position_mode: PnpPositionMode | str = PNP_POSITION_MODE_ALTIUM_PICK_PLACE,
+        origin_relative: bool = True,
+    ) -> tuple[float, float]:
+        """
+        Return a component PnP position in mils for the selected public mode.
+
+        Args:
+            component_index: Zero-based index into `components`.
+            position_mode: ``altium-pick-place`` or ``component-origin``.
+            origin_relative: If True, subtract the board origin.
+
+        Returns:
+            ``(x_mils, y_mils)`` in mils.
+        """
+        mode = normalize_pnp_position_mode(position_mode)
+        if mode == PNP_POSITION_MODE_COMPONENT_ORIGIN:
+            return self.get_component_origin_mils(
+                component_index,
+                origin_relative=origin_relative,
+            )
+        return self.get_component_pick_place_center_mils(
+            component_index,
+            origin_relative=origin_relative,
+        )
 
     def get_net_primitives(self, net_index: int) -> dict[str, list]:
         """

@@ -269,7 +269,7 @@ class NetEndpoint:
         """
         Serialize endpoint metadata using the package JSON naming convention.
         """
-        data = {
+        data: dict[str, object] = {
             "endpoint_id": self.endpoint_id,
             "role": self.role,
             "element_id": self.element_id,
@@ -668,15 +668,18 @@ class PnpEntry:
     Pick-and-place entry for a component.
 
         Contains position/rotation from PcbDoc merged with parameters
-        from schematic. Used for manufacturing pick-and-place output.
+        from schematic. Used for manufacturing pick-and-place output. By
+        default, ``center_x`` and ``center_y`` use the ``altium-pick-place``
+        mode from ``AltiumDesign.to_pnp()``: center of the bounding box of
+        component-owned pad anchor points, with component-origin fallback.
 
         Attributes:
             designator: Component designator (e.g., "R1", "U1_2")
             comment: Display value from schematic (e.g., "10k", "LM358")
             layer: PCB layer - "top" or "bottom" (normalized)
             footprint: PCB footprint name
-            center_x: X position in requested units (mm or mils)
-            center_y: Y position in requested units (mm or mils)
+            center_x: Selected PnP position X in requested units (mm or mils)
+            center_y: Selected PnP position Y in requested units (mm or mils)
             rotation: Rotation in degrees (0-360)
             description: Component description
             parameters: Dict of component parameters (MPN, Manufacturer, etc.)

@@ -88,8 +88,16 @@ uses `design.a1`.
 PNP fields:
 
 1. `units`: currently `mm` in the design JSON contract.
-2. `source_pcbdoc`: source PcbDoc filename used for placements.
-3. `placements`: list of component placements.
+2. `position_mode`: selected coordinate algorithm. Current design JSON emits
+   `altium-pick-place`.
+3. `source_pcbdoc`: source PcbDoc filename used for placements.
+4. `placements`: list of component placements.
+
+`altium-pick-place` matches Altium's Pick Place export by using the center of
+the bounding box of component-owned pad anchor points, with component-origin
+fallback for components that have no owned pads. Direct API callers can request
+`component-origin` from `AltiumDesign.to_pnp(...)` when they need the footprint
+placement origin instead.
 
 PNP placement fields:
 
@@ -97,8 +105,8 @@ PNP placement fields:
 2. `comment`: schematic value/comment when available.
 3. `layer`: normalized PCB layer, usually `top` or `bottom`.
 4. `footprint`: PCB footprint name.
-5. `center_x`: X placement in `pnp.units`.
-6. `center_y`: Y placement in `pnp.units`.
+5. `center_x`: selected PnP position X in `pnp.units`.
+6. `center_y`: selected PnP position Y in `pnp.units`.
 7. `rotation`: rotation in degrees.
 8. `description`: schematic or PCB component description.
 9. `parameters`: component parameters.

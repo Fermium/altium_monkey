@@ -135,6 +135,13 @@ The hierarchy block contains:
 ### PNP
 
 `pnp.units` is currently `mm`.
+`pnp.position_mode` is currently `altium-pick-place` for design JSON.
+
+`altium-pick-place` matches Altium's Pick Place export by using the center of
+the bounding box of component-owned pad anchor points, with component-origin
+fallback for components that have no owned pads. Direct API callers can request
+`component-origin` from `AltiumDesign.to_pnp(...)` when they need the footprint
+placement origin instead.
 
 Each placement contains:
 

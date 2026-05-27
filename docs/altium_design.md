@@ -23,6 +23,14 @@ Use it when you need to:
 PcbDoc. When a project has a PcbDoc, `AltiumDesign.to_json(...)` also includes
 the same data under the optional root `pnp` field.
 
+The default PnP coordinate mode is `altium-pick-place`. It matches Altium's
+Pick Place export by taking the center of the bounding box of component-owned
+pad anchor points and falling back to the component origin when a component has
+no owned pads. Use `position_mode="component-origin"` when the footprint
+placement origin is the desired coordinate. In design JSON, `pnp.position_mode`
+records the selected mode and `center_x`/`center_y` are the selected PnP
+position, not a generic geometric centroid.
+
 The `schema` field is the contract version. These payloads do not use a root
 `version` field.
 

@@ -1,3 +1,46 @@
+# altium-monkey 2026.05.26 Release Notes
+
+Package version: `2026.5.26`
+
+`2026.05.26` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.26`.
+
+This release makes Pick-and-Place coordinate generation explicit and
+documented after validating Altium PNP-METRIC parity on hierarchical board
+fixtures.
+
+## Pick-And-Place Position Modes
+
+`AltiumDesign.to_pnp(...)` now accepts `position_mode`. The default
+`altium-pick-place` mode matches Altium's Pick Place export by using the center
+of the bounding box of component-owned pad anchor points, with component-origin
+fallback when a component has no owned pads.
+
+Use `position_mode="component-origin"` when callers need the raw footprint
+placement origin instead.
+
+Design JSON now emits `pnp.position_mode` next to `pnp.units` and
+`pnp.source_pcbdoc`, and the public `design.a1` schema documents the allowed
+mode names. `center_x` and `center_y` should be read as the selected PnP
+position, not as a generic geometric centroid.
+
+Native C++ `Design::to_pnp(...)` and `altium_cruncher_native pnp` expose the
+same mode names. The native CLI accepts
+`--position-mode altium-pick-place|component-origin` and includes the selected
+mode in JSON output.
+
+## Validation
+
+The Python API, native C++ API, and native CLI are covered by PnP oracle and
+parity tests against `node_test_array`, including a footprint whose component
+origin differs from the Altium-compatible Pick Place position.
+
+Existing documented APIs remain compatible. The default PnP behavior remains
+the Altium-compatible mode introduced by the 2026.5.26 fix; the new argument is
+an opt-in override for callers that intentionally need component origins.
+
+---
+
 # altium-monkey 2026.05.25 Release Notes
 
 Package version: `2026.5.25`
