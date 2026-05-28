@@ -101,6 +101,13 @@ methods until metric helper functions are added.
 Low-level PCB record fields may expose Altium internal integer units. Prefer
 public helper methods for authored geometry.
 
+## Text
+
+`AltiumPcbDoc.add_text(...)` accepts `font_kind="stroke"`, `"truetype"`, or
+`"barcode"`. Stroke text accepts `stroke_font_type="default"`,
+`"sans-serif"`, or `"serif"` (native ids 1, 2, and 3). This is the same
+stroke-font vocabulary used by PcbLib footprint text helpers.
+
 ## Embedded 3D Models
 
 `AltiumPcbDoc.add_embedded_3d_model(...)` can embed a STEP payload and create

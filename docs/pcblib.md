@@ -34,6 +34,64 @@ Public PcbLib helper methods use explicit mil-unit parameter names. Metric
 package data is common for footprints, so convert millimeters to mils at the
 call site for now.
 
+## Pads, Mask, And Paste
+
+`AltiumPcbFootprint.add_pad(...)` and `add_custom_pad(...)` can author Altium's
+pad solder-mask and paste-mask expansion modes. Use the explicit mode/value
+arguments for new code:
+
+```python
+footprint.add_pad(
+    designator="1",
+    position_mils=(0, 0),
+    width_mils=40,
+    height_mils=30,
+    paste_mask_expansion_mode="manual",
+    paste_mask_expansion_mils=-40,
+    solder_mask_expansion_mode="rule",
+)
+```
+
+Accepted modes are `"none"`, `"rule"`, and `"manual"`, matching the native
+record values 0, 1, and 2. Manual mode requires signed `*_mils` values; `none`
+and `rule` should leave the manual value omitted. `PcbMaskExpansion` and
+`PcbMaskExpansionMode` are available when callers prefer a structured value.
+
+`add_custom_pad(...)` still accepts `paste_rule_expansion` and
+`solder_rule_expansion` for compatibility. Those booleans map to `rule` when
+true and `none` when false. New code should prefer the explicit expansion API.
+
+## Text
+
+`AltiumPcbFootprint.add_text(...)` supports stroke, TrueType, and barcode text
+through `font_kind`. Stroke text writes native stroke encoding and accepts
+`stroke_font_type="default"`, `"sans-serif"`, or `"serif"` (native ids 1, 2,
+and 3). TrueType text preserves `font_name`, `bold`, `italic`, inverted-text
+flags, and inverted margins for save/readback and downstream transcode.
+
+Barcode footprint text uses `font_kind="barcode"` or `PcbTextKind.BARCODE` and
+accepts the same barcode option names as PcbDoc text authoring:
+`barcode_kind`, `barcode_render_mode`, `barcode_full_size_mils`,
+`barcode_margin_mils`, `barcode_min_width_mils`, `barcode_show_text`, and
+`barcode_inverted`.
+
+```python
+footprint.add_text(
+    text="FP096",
+    position_mils=(10, 20),
+    height_mils=60,
+    layer=PcbLayer.TOP_OVERLAY,
+    font_kind=PcbTextKind.BARCODE,
+    barcode_kind=PcbBarcodeKind.CODE_39,
+    barcode_render_mode=PcbBarcodeRenderMode.BY_FULL_WIDTH,
+    barcode_full_size_mils=(600, 120),
+    barcode_margin_mils=(12, 8),
+    barcode_min_width_mils=5,
+    barcode_show_text=False,
+    barcode_inverted=False,
+)
+```
+
 ## Embedded 3D Models
 
 `AltiumPcbFootprint.add_embedded_3d_model(...)` can infer rectangular STEP

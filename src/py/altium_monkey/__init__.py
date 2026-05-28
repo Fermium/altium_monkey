@@ -235,6 +235,7 @@ from .altium_board import (
 )
 from .altium_pcb_model_checksum import compute_altium_model_checksum
 from .altium_pcb_step_bounds import PcbStepModelBounds, compute_step_model_bounds_mils
+from .altium_pcb_mask_expansion import PcbMaskExpansion, PcbMaskExpansionMode
 
 # PCB record classes
 from .altium_record_pcb__arc import AltiumPcbArc
@@ -447,6 +448,8 @@ __all__ = [
     "AltiumPcbTrack",
     "AltiumPcbArc",
     "PadShape",
+    "PcbMaskExpansion",
+    "PcbMaskExpansionMode",
     "PcbTextKind",
     "PcbBarcodeKind",
     "PcbBarcodeRenderMode",

@@ -273,7 +273,7 @@ def parse_embedded_fonts(data: bytes) -> list[EmbeddedFont]:
                     raw_data=data[record_start:record_end],
                 )
                 fonts.append(font)
-                log.info("Found embedded font: %s", font.filename)
+                log.debug("Found embedded font: %s", font.filename)
 
             offset = record_end
 
@@ -317,7 +317,7 @@ def extract_embedded_models(
             )
             models.append(model)
 
-            log.info(f"Found embedded model: {model.filename} ({model.model_format})")
+            log.debug(f"Found embedded model: {model.filename} ({model.model_format})")
 
         except Exception as e:
             log.debug(f"No embedded model at index {idx}: {e}")

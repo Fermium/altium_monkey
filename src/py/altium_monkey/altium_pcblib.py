@@ -30,7 +30,22 @@ from .altium_pcb_extended_primitive_information import (
     parse_extended_primitive_information_stream,
 )
 from .altium_ole import AltiumOleFile, AltiumOleWriter
-from .altium_pcb_enums import PadShape, PcbBodyProjection
+from .altium_pcb_enums import (
+    PadShape,
+    PcbBarcodeKind,
+    PcbBarcodeRenderMode,
+    PcbBodyProjection,
+    PcbTextJustification,
+    PcbTextKind,
+)
+from .altium_pcbdoc_builder_text import (
+    PCB_TEXT_BARCODE_MARGIN_MILS,
+    PCB_TEXT_BARCODE_MIN_WIDTH_MILS,
+)
+from .altium_pcb_mask_expansion import (
+    PcbMaskExpansionInput,
+    PcbMaskExpansionModeInput,
+)
 from .altium_pcb_pad_bounds import pad_projection_bounds_mils
 from .altium_pcb_step_bounds import compute_step_model_bounds_mils
 from .altium_record_types import PcbLayer, PcbRecordType
@@ -251,6 +266,12 @@ class AltiumPcbFootprint:
         corner_radius_percent: int | None = None,
         slot_length_mils: float = 0.0,
         slot_rotation_degrees: float = 0.0,
+        solder_mask_expansion: PcbMaskExpansionInput = None,
+        solder_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion: PcbMaskExpansionInput = None,
+        paste_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        paste_mask_expansion_mils: float | None = None,
         hole_positive_tolerance_mils: float | None = None,
         hole_negative_tolerance_mils: float | None = None,
     ) -> AltiumPcbPad:
@@ -270,6 +291,18 @@ class AltiumPcbFootprint:
             corner_radius_percent: Optional rounded-rectangle corner radius percentage.
             slot_length_mils: Optional total slotted-hole length in mils.
             slot_rotation_degrees: Optional slotted-hole rotation in degrees.
+            solder_mask_expansion: Optional `PcbMaskExpansion`, mode string, or
+                native mode id for solder-mask expansion.
+            solder_mask_expansion_mode: Optional solder-mask mode string/id:
+                `"none"`, `"rule"`, or `"manual"`.
+            solder_mask_expansion_mils: Signed manual solder-mask expansion in
+                mils. Required when the solder mode is `"manual"`.
+            paste_mask_expansion: Optional `PcbMaskExpansion`, mode string, or
+                native mode id for paste-mask expansion.
+            paste_mask_expansion_mode: Optional paste-mask mode string/id:
+                `"none"`, `"rule"`, or `"manual"`.
+            paste_mask_expansion_mils: Signed manual paste-mask expansion in
+                mils. Required when the paste mode is `"manual"`.
             hole_positive_tolerance_mils: Optional upper drill-hole tolerance
                 in mils.
             hole_negative_tolerance_mils: Optional lower drill-hole tolerance
@@ -294,6 +327,12 @@ class AltiumPcbFootprint:
             corner_radius_percent=corner_radius_percent,
             slot_length_mil=slot_length_mils,
             slot_rotation_degrees=slot_rotation_degrees,
+            solder_mask_expansion=solder_mask_expansion,
+            solder_mask_expansion_mode=solder_mask_expansion_mode,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion=paste_mask_expansion,
+            paste_mask_expansion_mode=paste_mask_expansion_mode,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
             hole_positive_tolerance_mil=hole_positive_tolerance_mils,
             hole_negative_tolerance_mil=hole_negative_tolerance_mils,
         )
@@ -309,8 +348,14 @@ class AltiumPcbFootprint:
         anchor_diameter_mils: float = 1.0,
         hole_points_mils: list[list[tuple[float, float]]] | None = None,
         outline_points_are_local: bool = True,
-        paste_rule_expansion: bool = True,
-        solder_rule_expansion: bool = True,
+        paste_rule_expansion: bool | None = None,
+        solder_rule_expansion: bool | None = None,
+        solder_mask_expansion: PcbMaskExpansionInput = None,
+        solder_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion: PcbMaskExpansionInput = None,
+        paste_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        paste_mask_expansion_mils: float | None = None,
     ) -> AltiumPcbPad:
         """
         Add a custom pad using mil units and local or absolute polygon points.
@@ -324,8 +369,24 @@ class AltiumPcbFootprint:
             anchor_diameter_mils: Diameter of the small anchor pad in mils.
             hole_points_mils: Optional cutout polygons in mils.
             outline_points_are_local: Treat outline points as shape-local offsets.
-            paste_rule_expansion: Enable rule-driven paste mask expansion.
-            solder_rule_expansion: Enable rule-driven solder mask expansion.
+            paste_rule_expansion: Compatibility alias. `True` maps to
+                `paste_mask_expansion_mode="rule"` and `False` maps to
+                `"none"`.
+            solder_rule_expansion: Compatibility alias. `True` maps to
+                `solder_mask_expansion_mode="rule"` and `False` maps to
+                `"none"`.
+            solder_mask_expansion: Optional explicit solder-mask expansion
+                dataclass/mode.
+            solder_mask_expansion_mode: Optional solder-mask mode string/id:
+                `"none"`, `"rule"`, or `"manual"`.
+            solder_mask_expansion_mils: Signed manual solder-mask expansion in
+                mils. Required when the solder mode is `"manual"`.
+            paste_mask_expansion: Optional explicit paste-mask expansion
+                dataclass/mode.
+            paste_mask_expansion_mode: Optional paste-mask mode string/id:
+                `"none"`, `"rule"`, or `"manual"`.
+            paste_mask_expansion_mils: Signed manual paste-mask expansion in
+                mils. Required when the paste mode is `"manual"`.
 
         Returns:
             The authored custom `AltiumPcbPad` record.
@@ -346,6 +407,12 @@ class AltiumPcbFootprint:
             outline_points_are_local=outline_points_are_local,
             paste_rule_expansion=paste_rule_expansion,
             solder_rule_expansion=solder_rule_expansion,
+            solder_mask_expansion=solder_mask_expansion,
+            solder_mask_expansion_mode=solder_mask_expansion_mode,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion=paste_mask_expansion,
+            paste_mask_expansion_mode=paste_mask_expansion_mode,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
         )
 
     def add_track(
@@ -552,13 +619,39 @@ class AltiumPcbFootprint:
         layer: int | PcbLayer = PcbLayer.TOP_OVERLAY,
         rotation_degrees: float = 0.0,
         stroke_width_mils: float = 10.0,
+        font_kind: str | PcbTextKind = PcbTextKind.STROKE,
+        stroke_font_type: int | str = "default",
         font_name: str = "Arial",
+        bold: bool = False,
+        italic: bool = False,
+        barcode_kind: int | PcbBarcodeKind = PcbBarcodeKind.CODE_39,
+        barcode_render_mode: int | PcbBarcodeRenderMode = (
+            PcbBarcodeRenderMode.BY_FULL_WIDTH
+        ),
+        barcode_full_size_mils: tuple[float, float] | None = None,
+        barcode_margin_mils: tuple[float, float] = (
+            PCB_TEXT_BARCODE_MARGIN_MILS,
+            PCB_TEXT_BARCODE_MARGIN_MILS,
+        ),
+        barcode_min_width_mils: float = PCB_TEXT_BARCODE_MIN_WIDTH_MILS,
+        barcode_show_text: bool = True,
+        barcode_inverted: bool = True,
         is_comment: bool = False,
         is_designator: bool = False,
         is_mirrored: bool = False,
+        is_inverted: bool = False,
+        inverted_margin_mils: float = 0.0,
+        use_inverted_rectangle: bool = False,
+        inverted_rectangle_size_mils: tuple[float, float] | None = None,
+        text_justification: int | PcbTextJustification | None = None,
     ) -> AltiumPcbText:
         """
-        Add stroke text to this footprint using mil units.
+        Add text to this footprint using mil units.
+
+        `font_kind` accepts `"stroke"`, `"truetype"`, and `"barcode"`. Stroke
+        text writes Altium stroke encoding (`font_type=0`). TrueType text
+        writes `font_type=1`. Barcode text writes `font_type=2` and preserves
+        the native barcode sizing/options block.
 
         Args:
             text: Text content.
@@ -567,10 +660,32 @@ class AltiumPcbFootprint:
             layer: `PcbLayer` or native layer id.
             rotation_degrees: Text rotation in degrees.
             stroke_width_mils: Stroke font line width in mils.
+            font_kind: Text rendering mode, `"stroke"`, `"truetype"`, or
+                `"barcode"`.
+            stroke_font_type: Stroke font family label or native id. Accepted
+                values are `"default"`/1, `"sans-serif"`/2, and `"serif"`/3.
             font_name: Native stroke/TrueType font name metadata.
+            bold: Enable bold style for TrueType text.
+            italic: Enable italic style for TrueType text.
+            barcode_kind: `PcbBarcodeKind` symbology for barcode text.
+            barcode_render_mode: `PcbBarcodeRenderMode` sizing mode.
+            barcode_full_size_mils: Optional `(width_mils, height_mils)` for
+                the native barcode full-size fields.
+            barcode_margin_mils: `(x_mils, y_mils)` barcode quiet-zone margins.
+            barcode_min_width_mils: Minimum barcode module width.
+            barcode_show_text: Show human-readable text below the barcode.
+            barcode_inverted: Enable native barcode inverted rendering.
             is_comment: Mark as component comment/value text.
             is_designator: Mark as component designator text.
             is_mirrored: Mirror text geometry.
+            is_inverted: Enable inverted text rendering.
+            inverted_margin_mils: Inverted text margin in mils.
+            use_inverted_rectangle: Use an explicit inverted rectangle instead
+                of deriving the box from text extents.
+            inverted_rectangle_size_mils: Optional inverted rectangle
+                `(width_mils, height_mils)`.
+            text_justification: Optional `PcbTextJustification` for inverted
+                text.
 
         Returns:
             The authored `AltiumPcbText` record.
@@ -585,10 +700,28 @@ class AltiumPcbFootprint:
             layer=layer,
             rotation_degrees=rotation_degrees,
             stroke_width_mil=stroke_width_mils,
+            font_kind=font_kind,
+            stroke_font_type=stroke_font_type,
             font_name=font_name,
+            bold=bold,
+            italic=italic,
+            barcode_kind=barcode_kind,
+            barcode_render_mode=barcode_render_mode,
+            barcode_full_size_mils=barcode_full_size_mils,
+            barcode_margin_mils=barcode_margin_mils,
+            barcode_min_width_mils=barcode_min_width_mils,
+            barcode_show_text=barcode_show_text,
+            barcode_inverted=barcode_inverted,
             is_comment=is_comment,
             is_designator=is_designator,
             is_mirrored=is_mirrored,
+            is_inverted=is_inverted,
+            inverted_margin_mil=inverted_margin_mils,
+            use_inverted_rectangle=use_inverted_rectangle,
+            inverted_rectangle_size_mil=inverted_rectangle_size_mils,
+            text_justification=None
+            if text_justification is None
+            else int(text_justification),
         )
 
     def add_component_body(

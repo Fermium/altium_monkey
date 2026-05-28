@@ -11,6 +11,12 @@
 - Add pads, tracks, arcs, regions, text, vias, component bodies, and embedded
   STEP models to footprints. STEP-derived component-body bounds use
   `wn-geometer`; explicit bounds remain supported.
+- Author pad solder-mask and paste-mask expansion modes with the stable
+  vocabulary `none`, `rule`, and `manual`. Manual expansion values are signed
+  mil-unit values.
+- Author footprint text as stroke, TrueType, or barcode text. Stroke fonts use
+  the stable vocabulary `default`, `sans-serif`, and `serif`. Barcode text
+  supports Code 39 and Code 128 option sets shared with PcbDoc text authoring.
 - Extract embedded 3D model payloads.
 
 ## Object Model

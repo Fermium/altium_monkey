@@ -20,7 +20,6 @@ from .altium_record_types import (
 from .altium_sch_binding import SingleFontBindableRecordMixin
 from .altium_serializer import (
     AltiumSerializer,
-    CaseMode,
     Fields,
     read_dynamic_string_field,
 )
@@ -112,7 +111,7 @@ class AltiumSchDesignator(SingleFontBindableRecordMixin, SchPrimitive):
             record,
             r,
             Fields.TEXT,
-            default="U?",
+            default="",
         )
         self.text = self._sanitize_text(text_value)
         # Use read_font_id for translation support

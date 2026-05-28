@@ -995,7 +995,9 @@ def _sample_board_outline_arc(
     direction = -1.0 if clockwise else 1.0
     points = [(current.x_mils, current.y_mils)]
     for step in range(1, segment_count + 1):
-        angle = start_angle + direction * math.radians(sweep_deg) * (step / segment_count)
+        angle = start_angle + direction * math.radians(sweep_deg) * (
+            step / segment_count
+        )
         points.append(
             (
                 current.center_x_mils + radius * math.cos(angle),
@@ -3999,6 +4001,7 @@ class PcbDocBuilder:
         rotation_degrees: float = 0.0,
         stroke_width_mils: float = 10.0,
         font_kind: str = "stroke",
+        stroke_font_type: int | str = "default",
         font_name: str = "Arial",
         bold: bool = False,
         italic: bool = False,
@@ -4035,6 +4038,7 @@ class PcbDocBuilder:
             rotation_degrees=rotation_degrees,
             stroke_width_mils=stroke_width_mils,
             font_kind=font_kind,
+            stroke_font_type=stroke_font_type,
             font_name=font_name,
             bold=bold,
             italic=italic,
@@ -4289,7 +4293,9 @@ class PcbDocBuilder:
             raise ValueError("Polygon outline requires at least 3 vertices")
 
         polygon = (
-            AltiumPcbPolygon.from_record({str(key): str(value) for key, value in raw_record.items()})
+            AltiumPcbPolygon.from_record(
+                {str(key): str(value) for key, value in raw_record.items()}
+            )
             if raw_record
             else AltiumPcbPolygon()
         )
@@ -4679,8 +4685,7 @@ class PcbDocBuilder:
                 len(self.extended_primitive_information),
             )
             streams["ExtendedPrimitiveInformation/Data"] = b"".join(
-                item.serialize_record()
-                for item in self.extended_primitive_information
+                item.serialize_record() for item in self.extended_primitive_information
             )
         else:
             streams["ExtendedPrimitiveInformation/Header"] = self._streams.get(
