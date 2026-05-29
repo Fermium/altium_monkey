@@ -2091,6 +2091,62 @@ def test_pcblib_add_free_3d_extruded_writes_component_body(
     assert len(body.outline) == 6
 
 
+def test_pcblib_public_mask_and_text_authoring_roundtrip(tmp_path: Path) -> None:
+    from altium_monkey import AltiumPcbLib, PcbMaskExpansion, PcbTextKind
+
+    pcblib = AltiumPcbLib()
+    footprint = pcblib.add_footprint("PUBLIC_MASK_TEXT")
+    footprint.add_pad(
+        designator="1",
+        position_mils=(0.0, 0.0),
+        width_mils=40.0,
+        height_mils=30.0,
+        paste_mask_expansion=PcbMaskExpansion.manual(-40.0),
+        solder_mask_expansion_mode="rule",
+    )
+    footprint.add_custom_pad(
+        designator="2",
+        position_mils=(100.0, 0.0),
+        outline_points_mils=[(-10.0, -10.0), (10.0, -10.0), (0.0, 10.0)],
+        paste_mask_expansion_mode="none",
+    )
+    footprint.add_text(
+        text="SERIF",
+        position_mils=(0.0, 100.0),
+        height_mils=60.0,
+        stroke_font_type="serif",
+    )
+    footprint.add_text(
+        text="TT",
+        position_mils=(0.0, 200.0),
+        height_mils=60.0,
+        font_kind=PcbTextKind.TRUETYPE,
+        font_name="Arial",
+        bold=True,
+        is_inverted=True,
+        inverted_margin_mils=5.0,
+    )
+
+    output_path = tmp_path / "public_mask_text.PcbLib"
+    pcblib.save(output_path)
+    parsed = AltiumPcbLib.from_file(output_path)
+    parsed_footprint = parsed.footprints[0]
+    pads_by_designator = {pad.designator: pad for pad in parsed_footprint.pads}
+    texts_by_content = {text.text_content: text for text in parsed_footprint.texts}
+
+    assert pads_by_designator["1"].pastemask_expansion_mode == 2
+    assert pads_by_designator["1"].pastemask_expansion_manual == -400000
+    assert pads_by_designator["1"].soldermask_expansion_mode == 1
+    assert pads_by_designator["2"].pastemask_expansion_mode == 0
+    assert texts_by_content["SERIF"].font_type == 0
+    assert texts_by_content["SERIF"].stroke_font_type == 3
+    assert texts_by_content["TT"].font_type == 1
+    assert texts_by_content["TT"].font_name == "Arial"
+    assert texts_by_content["TT"].is_bold is True
+    assert texts_by_content["TT"].is_inverted is True
+    assert texts_by_content["TT"].margin_border_width == 50000
+
+
 def test_pcblib_power_resistor_synthesis_writes_parseable_libraries(
     check_examples_root: Path,
 ) -> None:

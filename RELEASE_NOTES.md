@@ -1,3 +1,59 @@
+# altium-monkey 2026.05.28 Release Notes
+
+Package version: `2026.5.28`
+
+`2026.05.28` is represented in Python package metadata as the PEP 440
+canonical form `2026.5.28`.
+
+This release tightens public PcbLib/PcbDoc authoring APIs, makes normal parser
+logging quieter for downstream CLIs, and fixes public issue #3 so empty SchLib
+designators stay empty when read back.
+
+## Parser Logging
+
+Parser/status chatter such as `Parsing SchDoc file`, embedded image discovery,
+lazy `Loading PcbDoc`, and embedded font/model discovery messages now uses
+DEBUG logging. Downstream command-line tools can keep normal INFO output
+concise while still exposing parser diagnostics when they enable verbose or
+debug logging.
+
+## PcbLib Authoring
+
+PcbLib pad authoring now exposes explicit solder-mask and paste-mask expansion
+modes. `PcbMaskExpansion` and `PcbMaskExpansionMode` support `none`, `rule`,
+and `manual`, and footprint `add_pad(...)` / `add_custom_pad(...)` accept
+signed manual expansion values in mils. `add_custom_pad(...)` still accepts the
+older rule-expansion booleans as compatibility aliases.
+
+PcbLib and PcbDoc text authoring now share the public stroke-font contract.
+Stroke text accepts `stroke_font_type="default"`, `"sans-serif"`, or `"serif"`,
+and PcbLib `font_kind="stroke"` writes native stroke text encoding rather than
+TrueType encoding.
+
+PcbLib footprint `add_text(...)` now also supports first-class barcode text
+with the same option names as PcbDoc text authoring: `font_kind="barcode"`,
+`barcode_kind`, `barcode_render_mode`, `barcode_full_size_mils`,
+`barcode_margin_mils`, `barcode_min_width_mils`, `barcode_show_text`, and
+`barcode_inverted`. Save/readback preserves barcode sizing, symbology,
+human-readable text, inversion, layer, v7 layer, placement, rotation, and
+mirroring metadata.
+
+## SchLib Empty Designators
+
+Reading a SchLib designator record with omitted `Text` now preserves the empty
+designator instead of substituting `U?`. This fixes
+[#3](https://github.com/wavenumber-eng/altium_monkey/issues/3). Synthetic
+authoring helpers still default new designator objects to `U?` unless callers
+explicitly set the text to an empty string.
+
+## Public API Compatibility
+
+Existing documented APIs remain compatible. The new PcbLib authoring options
+are additive, legacy custom-pad rule-expansion booleans still work, and parser
+diagnostics remain available through DEBUG logging.
+
+---
+
 # altium-monkey 2026.05.26 Release Notes
 
 Package version: `2026.5.26`
@@ -24,16 +80,11 @@ Design JSON now emits `pnp.position_mode` next to `pnp.units` and
 mode names. `center_x` and `center_y` should be read as the selected PnP
 position, not as a generic geometric centroid.
 
-Native C++ `Design::to_pnp(...)` and `altium_cruncher_native pnp` expose the
-same mode names. The native CLI accepts
-`--position-mode altium-pick-place|component-origin` and includes the selected
-mode in JSON output.
-
 ## Validation
 
-The Python API, native C++ API, and native CLI are covered by PnP oracle and
-parity tests against `node_test_array`, including a footprint whose component
-origin differs from the Altium-compatible Pick Place position.
+The Pick-and-Place mode contract is covered by regression tests, including a
+fixture whose component origin differs from the Altium-compatible Pick Place
+position.
 
 Existing documented APIs remain compatible. The default PnP behavior remains
 the Altium-compatible mode introduced by the 2026.5.26 fix; the new argument is
@@ -92,10 +143,6 @@ they are available.
 The public schematic image boundary is now documented: use
 `AltiumSchDoc.extract_embedded_images(...)` for standalone image files, and
 treat `AltiumSchImage.image_data` as raw Storage payload for preservation.
-
-Native `altium_cruncher_native megamaid` schematic-image extraction has been
-aligned with Python so selected native/Python megamaid asset outputs stay
-byte-for-byte comparable for Hydroscope schematic images and embedded models.
 
 `altium_cruncher` CLI logging on Windows now avoids Unicode logging tracebacks
 when project filenames contain characters unsupported by a legacy console
@@ -295,10 +342,10 @@ the default display labels.
 
 ## PcbDoc Polygon Authoring Notes
 
-The C++ source tree now lets `PcbDocBuilder::add_region()` carry optional
-polygon realization linkage through `polygon_index`, `subpoly_index`, and
-`union_index`. This keeps authored region records able to preserve editable
-polygon relationships when callers know those indexes.
+PcbDoc region authoring can carry optional polygon realization linkage through
+`polygon_index`, `subpoly_index`, and `union_index`. This keeps authored region
+records able to preserve editable polygon relationships when callers know those
+indexes.
 
 The PcbDoc planning docs also separate typed polygon-pour field promotion from
 raw record preservation and polygon realization/linkage work, so later polygon

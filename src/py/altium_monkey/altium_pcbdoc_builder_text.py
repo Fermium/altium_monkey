@@ -10,7 +10,7 @@ from __future__ import annotations
 import struct
 import uuid
 from dataclasses import dataclass
-from typing import Iterable, Literal, Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from .altium_pcb_enums import (
     PcbBarcodeKind,
@@ -32,7 +32,8 @@ PCB_TEXT_BARCODE_MIN_WIDTH_MILS = 0.0
 
 _TT_RENDERER = None
 
-PcbTextKindInput = Literal["stroke", "truetype", "barcode"] | PcbTextKind
+PcbTextKindInput = str | PcbTextKind
+PcbStrokeFontTypeInput = int | str
 
 
 def _normalize_text_kind(font_kind: PcbTextKindInput) -> PcbTextKind:
@@ -42,6 +43,36 @@ def _normalize_text_kind(font_kind: PcbTextKindInput) -> PcbTextKind:
         return PcbTextKind(str(font_kind).strip().lower())
     except ValueError as exc:
         raise ValueError("font_kind must be one of: stroke, truetype, barcode") from exc
+
+
+def normalize_stroke_font_type(stroke_font_type: PcbStrokeFontTypeInput) -> int:
+    """
+    Normalize public stroke-font labels or native ids to Altium ids 1, 2, or 3.
+    """
+    if isinstance(stroke_font_type, int):
+        if stroke_font_type in (1, 2, 3):
+            return int(stroke_font_type)
+        raise ValueError("stroke_font_type must be default, sans-serif, or serif")
+
+    normalized = str(stroke_font_type).strip().lower().replace("_", "-")
+    normalized = " ".join(normalized.split())
+    aliases = {
+        "1": 1,
+        "default": 1,
+        "default-stroke": 1,
+        "2": 2,
+        "sans": 2,
+        "sans-serif": 2,
+        "sans serif": 2,
+        "3": 3,
+        "serif": 3,
+    }
+    try:
+        return aliases[normalized]
+    except KeyError as exc:
+        raise ValueError(
+            "stroke_font_type must be default, sans-serif, or serif"
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -221,6 +252,7 @@ def build_authored_text(
     rotation_degrees: float = 0.0,
     stroke_width_mils: float = 10.0,
     font_kind: PcbTextKindInput = PcbTextKind.STROKE,
+    stroke_font_type: PcbStrokeFontTypeInput = "default",
     font_name: str = "Arial",
     bold: bool = False,
     italic: bool = False,
@@ -255,6 +287,7 @@ def build_authored_text(
     - TrueType flavor (`font_type=1`, `stroke_font_type=1`)
     """
     text_kind = _normalize_text_kind(font_kind)
+    resolved_stroke_font_type = normalize_stroke_font_type(stroke_font_type)
     layer_id = int(layer)
     text_record = AltiumPcbText()
     text_record.layer = layer_id
@@ -346,7 +379,7 @@ def build_authored_text(
     if text_kind == PcbTextKind.TRUETYPE:
         text_record.font_type = 1
         text_record._font_type_offset43 = 1
-        text_record.stroke_font_type = 1
+        text_record.stroke_font_type = resolved_stroke_font_type
         text_record.is_bold = bool(bold)
         text_record.is_italic = bool(italic)
         textbox_width_mils, textbox_height_mils = _measure_truetype_textbox_mils(
@@ -369,7 +402,7 @@ def build_authored_text(
         # actual barcode discriminator is stored in the barcode block's
         # TextKind byte.
         text_record._font_type_offset43 = 0
-        text_record.stroke_font_type = 1
+        text_record.stroke_font_type = resolved_stroke_font_type
         text_record.is_bold = bool(bold)
         text_record.is_italic = bool(italic)
         text_record.textbox_rect_width = text_record.barcode_full_width
@@ -377,7 +410,7 @@ def build_authored_text(
     else:
         text_record.font_type = 0
         text_record._font_type_offset43 = 0
-        text_record.stroke_font_type = 1
+        text_record.stroke_font_type = resolved_stroke_font_type
         if text_justification is None:
             text_record.textbox_rect_justification = 5
         text_record.is_bold = False

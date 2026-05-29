@@ -992,7 +992,7 @@ class AltiumDesign:
 
         from .altium_pcbdoc import AltiumPcbDoc
 
-        log.info(f"Loading PcbDoc: {target_path.name}")
+        log.debug(f"Loading PcbDoc: {target_path.name}")
         parsed = AltiumPcbDoc.from_file(target_path)
         self._pcbdoc_cache[cache_key] = parsed
         self._pcbdoc = parsed

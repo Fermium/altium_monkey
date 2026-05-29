@@ -56,8 +56,22 @@ from .altium_pcb_pad_authoring import (
     apply_authored_pad_shape,
     validate_non_negative,
 )
+from .altium_pcb_mask_expansion import (
+    PcbMaskExpansionInput,
+    PcbMaskExpansionModeInput,
+    apply_pcb_mask_expansion_to_pad,
+    resolve_pcb_mask_expansion,
+    resolve_pcb_mask_expansion_with_legacy_alias,
+)
+from .altium_pcbdoc_builder_text import (
+    PCB_TEXT_BARCODE_MARGIN_MILS,
+    PCB_TEXT_BARCODE_MIN_WIDTH_MILS,
+    build_authored_text,
+)
 from .altium_resolved_layer_stack import legacy_layer_to_v7_save_id
 from .altium_record_pcb__arc import AltiumPcbArc
+from .altium_pcb_enums import PcbBarcodeKind
+from .altium_pcb_enums import PcbBarcodeRenderMode
 from .altium_pcb_enums import PcbBodyProjection
 from .altium_pcb_enums import PcbRegionKind
 from .altium_record_pcb__component_body import AltiumPcbComponentBody
@@ -2215,6 +2229,12 @@ class PcbLibBuilder:
         corner_radius_percent: int | None = None,
         slot_length_mil: float = 0.0,
         slot_rotation_degrees: float = 0.0,
+        solder_mask_expansion: PcbMaskExpansionInput = None,
+        solder_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion: PcbMaskExpansionInput = None,
+        paste_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        paste_mask_expansion_mils: float | None = None,
         hole_positive_tolerance_mil: float | None = None,
         hole_negative_tolerance_mil: float | None = None,
     ) -> AltiumPcbPad:
@@ -2270,6 +2290,21 @@ class PcbLibBuilder:
         pad._subrecord2_data = _PAD_SUBRECORD2_DEFAULT
         pad._subrecord3_data = _PAD_SUBRECORD3_DEFAULT
         pad._subrecord4_data = _PAD_SUBRECORD4_DEFAULT
+        apply_pcb_mask_expansion_to_pad(
+            pad,
+            paste=resolve_pcb_mask_expansion(
+                value=paste_mask_expansion,
+                mode=paste_mask_expansion_mode,
+                expansion_mils=paste_mask_expansion_mils,
+                field_name="paste_mask_expansion",
+            ),
+            solder=resolve_pcb_mask_expansion(
+                value=solder_mask_expansion,
+                mode=solder_mask_expansion_mode,
+                expansion_mils=solder_mask_expansion_mils,
+                field_name="solder_mask_expansion",
+            ),
+        )
         if slot_iu > 0:
             pad.hole_shape = SLOT_HOLE_SHAPE
             pad.slot_size = slot_iu
@@ -2303,8 +2338,14 @@ class PcbLibBuilder:
         anchor_diameter_mil: float = 1.0,
         hole_points_mil: list[list[tuple[float, float]]] | None = None,
         outline_points_are_local: bool = True,
-        paste_rule_expansion: bool = True,
-        solder_rule_expansion: bool = True,
+        paste_rule_expansion: bool | None = None,
+        solder_rule_expansion: bool | None = None,
+        solder_mask_expansion: PcbMaskExpansionInput = None,
+        solder_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion: PcbMaskExpansionInput = None,
+        paste_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        paste_mask_expansion_mils: float | None = None,
     ) -> AltiumPcbPad:
         """
         Author a custom pad as Altium stores it: tiny anchor pad plus region.
@@ -2323,6 +2364,20 @@ class PcbLibBuilder:
             layer=layer_id,
             shape=PadShape.CIRCLE,
             rotation_degrees=0.0,
+            solder_mask_expansion=resolve_pcb_mask_expansion_with_legacy_alias(
+                value=solder_mask_expansion,
+                mode=solder_mask_expansion_mode,
+                expansion_mils=solder_mask_expansion_mils,
+                legacy_rule_expansion=solder_rule_expansion,
+                field_name="solder_mask_expansion",
+            ),
+            paste_mask_expansion=resolve_pcb_mask_expansion_with_legacy_alias(
+                value=paste_mask_expansion,
+                mode=paste_mask_expansion_mode,
+                expansion_mils=paste_mask_expansion_mils,
+                legacy_rule_expansion=paste_rule_expansion,
+                field_name="paste_mask_expansion",
+            ),
         )
 
         offset_x_iu = self._mil_to_internal_units(offset_x_mil)
@@ -2332,9 +2387,6 @@ class PcbLibBuilder:
             pad.hole_offset_y = [offset_y_iu] * 32
             pad.alt_shape = [int(PadShape.CIRCLE)] * 32
             pad.corner_radius = [0] * 32
-
-        pad.pastemask_expansion_mode = 1 if paste_rule_expansion else 0
-        pad.soldermask_expansion_mode = 1 if solder_rule_expansion else 0
 
         center_x_mil = float(x_mil) + float(offset_x_mil)
         center_y_mil = float(y_mil) + float(offset_y_mil)
@@ -2657,51 +2709,69 @@ class PcbLibBuilder:
         layer: int | PcbLayer = PcbLayer.TOP_OVERLAY,
         rotation_degrees: float = 0.0,
         stroke_width_mil: float = 10.0,
+        font_kind: str = "stroke",
+        stroke_font_type: int | str = "default",
         font_name: str = "Arial",
+        bold: bool = False,
+        italic: bool = False,
+        barcode_kind: int | PcbBarcodeKind = PcbBarcodeKind.CODE_39,
+        barcode_render_mode: int
+        | PcbBarcodeRenderMode = PcbBarcodeRenderMode.BY_FULL_WIDTH,
+        barcode_full_size_mils: tuple[float, float] | None = None,
+        barcode_margin_mils: tuple[float, float] = (
+            PCB_TEXT_BARCODE_MARGIN_MILS,
+            PCB_TEXT_BARCODE_MARGIN_MILS,
+        ),
+        barcode_min_width_mils: float = PCB_TEXT_BARCODE_MIN_WIDTH_MILS,
+        barcode_show_text: bool = True,
+        barcode_inverted: bool = True,
         is_comment: bool = False,
         is_designator: bool = False,
         is_mirrored: bool = False,
+        is_inverted: bool = False,
+        inverted_margin_mil: float = 0.0,
+        use_inverted_rectangle: bool = False,
+        inverted_rectangle_size_mil: tuple[float, float] | None = None,
+        text_justification: int | None = None,
     ) -> AltiumPcbText:
         """
         Add a text primitive to a footprint.
         """
         spec = self._spec_for_footprint(footprint)
-        text_record = AltiumPcbText()
         layer_id = int(layer)
         wide_index = self._next_widestring_index(spec)
         spec.widestrings[wide_index] = text
-
-        text_record.layer = layer_id
+        text_record = build_authored_text(
+            text=text,
+            position_mils=(x_mil, y_mil),
+            height_mils=height_mil,
+            layer=layer_id,
+            rotation_degrees=rotation_degrees,
+            stroke_width_mils=stroke_width_mil,
+            font_kind=font_kind,
+            stroke_font_type=stroke_font_type,
+            font_name=font_name,
+            bold=bold,
+            italic=italic,
+            barcode_kind=barcode_kind,
+            barcode_render_mode=barcode_render_mode,
+            barcode_full_size_mils=barcode_full_size_mils,
+            barcode_margin_mils=barcode_margin_mils,
+            barcode_min_width_mils=barcode_min_width_mils,
+            barcode_show_text=barcode_show_text,
+            barcode_inverted=barcode_inverted,
+            is_comment=is_comment,
+            is_designator=is_designator,
+            is_mirrored=is_mirrored,
+            is_inverted=is_inverted,
+            inverted_margin_mils=inverted_margin_mil,
+            use_inverted_rectangle=use_inverted_rectangle,
+            inverted_rectangle_size_mils=inverted_rectangle_size_mil,
+            text_justification=text_justification,
+        )
         text_record.net_index = None
         text_record.component_index = None
-        text_record.polygon_index = 0xFFFF
-        text_record.union_index = 0xFFFFFFFF
-        text_record.text_union_index = 0
-        text_record.user_routed = True
-        text_record.is_locked = False
-        text_record.is_keepout = False
-        text_record.x = self._mil_to_internal_units(x_mil)
-        text_record.y = self._mil_to_internal_units(y_mil)
-        text_record.height = self._mil_to_internal_units(height_mil)
-        text_record.rotation = float(rotation_degrees)
-        text_record.stroke_width = self._mil_to_internal_units(stroke_width_mil)
-        text_record.width = text_record.stroke_width
-        text_record.is_mirrored = is_mirrored
-        text_record.is_comment = is_comment
-        text_record.is_designator = is_designator
-        text_record.text_content = text
         text_record.widestring_index = wide_index
-        text_record.font_type = 1
-        text_record._font_type_offset43 = 1
-        text_record.stroke_font_type = 1
-        text_record.font_name = font_name
-        text_record.textbox_rect_justification = 3
-        text_record.is_justification_valid = True
-        text_record.advance_snapping = False
-        text_record.snap_point_x = text_record.x
-        text_record.snap_point_y = text_record.y
-        text_record.barcode_layer_v7 = legacy_layer_to_v7_save_id(layer_id)
-        text_record._original_sr1_len = 252
         self._append_primitive(footprint, text_record)
         return text_record
 

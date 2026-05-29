@@ -798,7 +798,7 @@ class AltiumSchDoc(JsonApplyMixin):
         if not filepath.exists():
             raise FileNotFoundError(f"SchDoc file not found: {filepath}")
 
-        log.info(f"Parsing SchDoc file: {filepath.name}")
+        log.debug(f"Parsing SchDoc file: {filepath.name}")
 
         self.filepath = filepath
 
@@ -806,11 +806,11 @@ class AltiumSchDoc(JsonApplyMixin):
         ole = AltiumOleFile(filepath)
 
         # Parse FileHeader stream
-        log.info("  Parsing FileHeader stream...")
+        log.debug("  Parsing FileHeader stream...")
         records = get_records_in_section(ole, "FileHeader")
 
         if debug:
-            log.info(f"    Found {len(records)} records in FileHeader")
+            log.debug(f"    Found {len(records)} records in FileHeader")
 
         # First record: File header (preserve UniqueID and Weight for round-trip)
         if records and "HEADER" in records[0]:
@@ -823,16 +823,16 @@ class AltiumSchDoc(JsonApplyMixin):
             if weight_str:
                 self._file_weight = int(weight_str)
             if debug:
-                log.info(f"    Header: {header_text[:60]}...")
-                log.info(f"    UniqueID: {self._file_unique_id}")
-                log.info(f"    Weight: {self._file_weight}")
+                log.debug(f"    Header: {header_text[:60]}...")
+                log.debug(f"    UniqueID: {self._file_unique_id}")
+                log.debug(f"    Weight: {self._file_weight}")
 
         # Parse all records and build object hierarchy
         self._parse_records(records[1:], debug, source_stream="FileHeader")
 
         # Parse Additional stream if exists (must be a stream, not a storage)
         if ole.exists("Additional") and ole.get_type("Additional") == 2:
-            log.info("  Parsing Additional stream...")
+            log.debug("  Parsing Additional stream...")
             additional_records = get_records_in_section(ole, "Additional")
             if additional_records:
                 # Skip header record
@@ -842,16 +842,16 @@ class AltiumSchDoc(JsonApplyMixin):
 
         # Parse Storage stream for embedded images (must be a stream, not a storage)
         if ole.exists("Storage") and ole.get_type("Storage") == 2:
-            log.info("  Parsing Storage stream...")
+            log.debug("  Parsing Storage stream...")
             self.embedded_images, self._raw_storage_entries = parse_storage_stream_raw(
                 ole, debug
             )
             if self.embedded_images:
-                log.info(f"    Found {len(self.embedded_images)} embedded images")
+                log.debug(f"    Found {len(self.embedded_images)} embedded images")
 
         # Parse ObjectDefinitions stream for custom power port/connector graphics
         if ole.exists("ObjectDefinitions") and ole.get_type("ObjectDefinitions") == 2:
-            log.info("  Parsing ObjectDefinitions stream...")
+            log.debug("  Parsing ObjectDefinitions stream...")
             self._parse_object_definitions(ole, debug)
 
         ole.close()
@@ -875,7 +875,7 @@ class AltiumSchDoc(JsonApplyMixin):
         self._set_all_parent_references(debug)
         self._bind_all_objects_to_context()
 
-        log.info(
+        log.debug(
             f"  Parsed successfully: {len(self.all_objects)} total objects, "
             f"{len(self.components)} components"
         )
@@ -914,7 +914,7 @@ class AltiumSchDoc(JsonApplyMixin):
                 current_children = []
                 if debug:
                     lib_ref = rec.get("LibReference", "")
-                    log.info(f"    ObjectDefinition: {lib_ref} ({current_def_id})")
+                    log.debug(f"    ObjectDefinition: {lib_ref} ({current_def_id})")
             else:
                 # Child primitive record
                 current_children.append(rec)
@@ -924,7 +924,7 @@ class AltiumSchDoc(JsonApplyMixin):
             self.object_definitions[current_def_id] = current_children
 
         if self.object_definitions:
-            log.info(f"    Found {len(self.object_definitions)} object definitions")
+            log.debug(f"    Found {len(self.object_definitions)} object definitions")
 
     def _parse_records(
         self,

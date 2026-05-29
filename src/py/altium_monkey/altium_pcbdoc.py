@@ -2012,6 +2012,7 @@ class AltiumPcbDoc:
         rotation_degrees: float = 0.0,
         stroke_width_mils: float = 10.0,
         font_kind: str | PcbTextKind = PcbTextKind.STROKE,
+        stroke_font_type: int | str = "default",
         font_name: str = "Arial",
         bold: bool = False,
         italic: bool = False,
@@ -2055,6 +2056,8 @@ class AltiumPcbDoc:
             rotation_degrees: Text rotation in degrees.
             stroke_width_mils: Stroke font line width in mils.
             font_kind: `PcbTextKind` or equivalent string.
+            stroke_font_type: Stroke font family label or native id. Accepted
+                values are `"default"`/1, `"sans-serif"`/2, and `"serif"`/3.
             font_name: TrueType or stroke font family name.
             bold: Enable bold style for TrueType text.
             italic: Enable italic style for TrueType text.
@@ -2091,6 +2094,7 @@ class AltiumPcbDoc:
             rotation_degrees=rotation_degrees,
             stroke_width_mils=stroke_width_mils,
             font_kind=font_kind,
+            stroke_font_type=stroke_font_type,
             font_name=font_name,
             bold=bold,
             italic=italic,
