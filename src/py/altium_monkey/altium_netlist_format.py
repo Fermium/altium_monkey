@@ -214,7 +214,7 @@ class NetlistData:
                                   Mirrors Altium's "NetlistSinglePinNets" project option.
 
         Returns:
-            Complete .NET file content as string
+            Complete WireList netlist file content as string
         """
         lines = []
 
@@ -360,7 +360,7 @@ def netlist_to_wirelist(
     Convert a Netlist object to WireList format string.
 
     This function takes the new generic Netlist model (from altium_netlist_model.py)
-    and produces the WireList (.NET) format that Altium exports.
+    and produces the WireList netlist format that Altium exports.
 
     Args:
         netlist: Netlist object with nets and components

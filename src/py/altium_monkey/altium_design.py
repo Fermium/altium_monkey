@@ -12,6 +12,11 @@ from typing import TYPE_CHECKING
 
 from .altium_api_markers import public_api
 from .altium_netlist_common import _evaluate_altium_expression
+from .altium_pnp_position import (
+    PNP_POSITION_MODE_ALTIUM_PICK_PLACE,
+    PnpPositionMode,
+    normalize_pnp_position_mode,
+)
 
 if TYPE_CHECKING:
     from .altium_netlist_options import NetlistOptions
@@ -55,7 +60,11 @@ def _coerce_variant_parameter_overrides(
             if coerced_params:
                 overrides[designator_s] = coerced_params
 
-    for row in variant_data.get("param_variations", []) or []:
+    raw_param_variations = variant_data.get("param_variations")
+    param_variations = (
+        raw_param_variations if isinstance(raw_param_variations, list) else []
+    )
+    for row in param_variations:
         if not isinstance(row, dict):
             continue
         designator = str(
@@ -244,6 +253,8 @@ class AltiumDesign:
         """
         if self._netlist is None:
             self._compile_cached_netlist()
+        if self._netlist is None:
+            raise RuntimeError("Netlist compilation did not produce a netlist")
         return self._netlist
 
     def _compile_cached_netlist(self) -> None:
@@ -420,11 +431,13 @@ class AltiumDesign:
         if not pcbdoc_paths:
             return None
 
-        placements = self.to_pnp(units="mm")
+        position_mode = PNP_POSITION_MODE_ALTIUM_PICK_PLACE
+        placements = self.to_pnp(units="mm", position_mode=position_mode)
         source_path = self._pcbdoc.filepath if self._pcbdoc else pcbdoc_paths[0]
         source_name = Path(source_path).name if source_path else pcbdoc_paths[0].name
         return {
             "units": "mm",
+            "position_mode": position_mode,
             "source_pcbdoc": source_name,
             "placements": [entry.to_json() for entry in placements],
         }
@@ -995,12 +1008,18 @@ class AltiumDesign:
         variant: str | None = None,
         units: str = "mm",
         exclude_no_bom: bool = False,
+        position_mode: PnpPositionMode | str = PNP_POSITION_MODE_ALTIUM_PICK_PLACE,
     ) -> list[PnpEntry]:
         """
         Generate Pick-and-Place data from PCB.
 
                 PcbDoc data is loaded on demand so BOM-only workflows do not pay the
-                parse cost of the PCB file.
+                parse cost of the PCB file. The default ``altium-pick-place``
+                position mode matches Altium's Pick Place export: it uses the
+                center of the bounding box of component-owned pad anchor points
+                and falls back to the component origin when no pads exist.
+                ``component-origin`` returns the footprint placement origin
+                directly.
 
                 Args:
                     variant: If specified, filter components by variant (DNP handling).
@@ -1008,6 +1027,8 @@ class AltiumDesign:
                     units: Position units - "mm" (default) or "mils"
                     exclude_no_bom: If True, exclude STANDARD_NO_BOM/GRAPHICAL components.
                                    Default False because PnP may need mechanical placements.
+                    position_mode: "altium-pick-place" (default) or
+                                   "component-origin".
 
                 Returns:
                     List of PnpEntry objects with position/rotation data.
@@ -1021,10 +1042,6 @@ class AltiumDesign:
 
         # Lazy-load PcbDoc on first call
         pcbdoc = self._get_or_load_pcbdoc()
-
-        # Get board origin for coordinate adjustment
-        origin_x = pcbdoc.board.origin_x if pcbdoc.board else 0.0
-        origin_y = pcbdoc.board.origin_y if pcbdoc.board else 0.0
 
         # Build BOM lookup for schematic data (parameters, description, etc.)
         # Use netlist components which have parameters populated
@@ -1049,8 +1066,9 @@ class AltiumDesign:
         else:
             raise ValueError(f"Unknown units: {units}. Use 'mm' or 'mils'.")
 
-        result = []
-        for pcb_comp in pcbdoc.components:
+        normalized_position_mode = normalize_pnp_position_mode(position_mode)
+        result: list[PnpEntry] = []
+        for component_index, pcb_comp in enumerate(pcbdoc.components):
             designator = pcb_comp.designator
 
             # Skip DNP components if variant specified
@@ -1071,9 +1089,11 @@ class AltiumDesign:
             ):
                 continue
 
-            # Calculate position relative to board origin (reuse AltiumPcbComponent methods)
-            x_mils = pcb_comp.get_x_mils(origin_x)
-            y_mils = pcb_comp.get_y_mils(origin_y)
+            # Calculate the selected Pick Place position relative to the board origin.
+            x_mils, y_mils = pcbdoc.get_component_pnp_position_mils(
+                component_index,
+                position_mode=normalized_position_mode,
+            )
 
             # Convert to requested units
             center_x = round(x_mils * scale, 4)
@@ -1095,7 +1115,12 @@ class AltiumDesign:
                 center_y=center_y,
                 rotation=rotation,
                 description=sch_comp.description if sch_comp else pcb_comp.description,
-                parameters=sch_comp.parameters if sch_comp else pcb_comp.parameters,
+                parameters={
+                    str(key): str(value)
+                    for key, value in (
+                        sch_comp.parameters if sch_comp else (pcb_comp.parameters or {})
+                    ).items()
+                },
             )
             result.append(pnp_entry)
 

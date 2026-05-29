@@ -451,6 +451,8 @@ class AltiumPcbShapeBasedRegion(PcbGraphicalObject):
         if self.kind == PcbRegionKind.BOARD_CUTOUT:
             kind_value = 0
             is_board_cutout = True
+        elif self.kind == PcbRegionKind.POLYGON_CUTOUT:
+            kind_value = 1
 
         props["KIND"] = str(kind_value)
         props["ISBOARDCUTOUT"] = "TRUE" if is_board_cutout else "FALSE"

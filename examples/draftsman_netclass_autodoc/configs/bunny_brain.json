@@ -1,0 +1,44 @@
+{
+  "schema": "altium-monkey.draftsman-netclass-autodoc.v1",
+  "source_project": "assets/projects/bunny_brain/bunny_brain_D.PrjPcb",
+  "output_name": "bunny_brain",
+  "sheet_size": "ANSI B",
+  "view_scale": 4.0,
+  "target_fill_ratio": 0.75,
+  "tile_gap_x_mm": 8.0,
+  "tile_gap_y_mm": 8.0,
+  "minimum_routing_length_mils": 10.0,
+  "connected_highlight_filter": true,
+  "auto_fit_scale": true,
+  "style": {
+    "context_copper": "#B8B8B8",
+    "smd_pad_copper": "#000000",
+    "through_hole_pad_copper": "#000000",
+    "via_pad_copper": "#000000",
+    "drill_hole": "#FFFFFF",
+    "non_plated_hole": "#808080",
+    "document_grid": "#BEBEBE"
+  },
+  "groups": [
+    {
+      "id": "octal_spi",
+      "title": "OCTAL_SPI Bus",
+      "net_classes": ["OCTAL_SPI"],
+      "highlight_color": "#D00000",
+      "notes": [
+        "Octal SPI routed copper is highlighted across each routed layer.",
+        "Context copper remains gray; component pads and drill holes are split into their own buckets."
+      ]
+    },
+    {
+      "id": "usb_diff_pairs",
+      "title": "USB0 and USB1 Differential Pairs",
+      "differential_pair_classes": ["USB0", "USB1"],
+      "highlight_color": "#D00000",
+      "notes": [
+        "USB differential pair classes are grouped onto one Draftsman page.",
+        "Highlighted pads and vias follow the pair copper into the mask bucket."
+      ]
+    }
+  ]
+}

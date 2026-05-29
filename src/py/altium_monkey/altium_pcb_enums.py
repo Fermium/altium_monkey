@@ -229,6 +229,41 @@ class PcbTextJustification(IntEnum):
     RIGHT_BOTTOM = 9
 
 
+class PcbTextAutoposition(IntEnum):
+    """
+    PCB component designator/comment auto-position values.
+
+    Mirrors the auto-position values used by component `NAMEAUTOPOSITION` and
+    `COMMENTAUTOPOSITION` fields.
+    """
+
+    MANUAL = 0
+    TOP_LEFT = 1
+    CENTER_LEFT = 2
+    BOTTOM_LEFT = 3
+    TOP_CENTER = 4
+    CENTER_CENTER = 5
+    BOTTOM_CENTER = 6
+    TOP_RIGHT = 7
+    CENTER_RIGHT = 8
+    BOTTOM_RIGHT = 9
+
+
+class PcbLibIdentifierKind(IntEnum):
+    """
+    Altium component-library identifier kind.
+
+    Mirrors the identifier-kind values used by `SOURCECOMPLIBIDENTIFIERKIND`
+    records.
+    """
+
+    ANY = 0
+    NAME_NO_TYPE = 1
+    NAME_WITH_TYPE = 2
+    FULL_PATH = 3
+    VAULT_NAME = 4
+
+
 class PcbViaMode(IntEnum):
     """Via stack-mode encoding."""
 

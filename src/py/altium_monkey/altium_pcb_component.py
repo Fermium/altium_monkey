@@ -6,9 +6,14 @@ This is an Altium-specific data structure that stores raw parsed data.
 """
 
 from dataclasses import dataclass
+from enum import IntEnum
+from typing import TypeVar
 
 from .altium_api_markers import public_api
 from .altium_common_enums import ComponentKind
+from .altium_pcb_enums import PcbLibIdentifierKind, PcbTextAutoposition
+
+_EnumT = TypeVar("_EnumT", bound=IntEnum)
 
 
 @public_api
@@ -67,11 +72,45 @@ class AltiumPcbComponent:
         """
         return dict(self.raw_record or {})
 
+    def _raw_text(self, key: str) -> str:
+        value = self.raw_record.get(key)
+        return "" if value is None else str(value)
+
+    def _int_field(self, key: str) -> int | None:
+        value = self.raw_record.get(key)
+        if value is None or str(value).strip() == "":
+            return None
+        try:
+            return int(str(value).strip())
+        except ValueError:
+            return None
+
+    def _enum_field(
+        self, key: str, enum_type: type[_EnumT]
+    ) -> _EnumT | None:
+        value = self._int_field(key)
+        if value is None:
+            return None
+        try:
+            return enum_type(value)
+        except ValueError:
+            return None
+
     def _bool_flag(self, key: str, default: bool) -> bool:
         value = self.raw_record.get(key)
         if value is None:
             return default
         return str(value).strip().upper() not in {"FALSE", "0", "NO", "OFF"}
+
+    def _optional_bool_flag(self, key: str) -> bool | None:
+        value = self.raw_record.get(key)
+        if value is None:
+            return None
+        return str(value).strip().upper() not in {"FALSE", "0", "NO", "OFF"}
+
+    @staticmethod
+    def _altium_path_segments(value: str) -> tuple[str, ...]:
+        return tuple(part for part in str(value).split("\\") if part)
 
     @property
     def name_on(self) -> bool:
@@ -90,8 +129,44 @@ class AltiumPcbComponent:
         return self._bool_flag("DESIGNATORON", False)
 
     @property
+    def name_auto_position(self) -> PcbTextAutoposition | None:
+        return self._enum_field("NAMEAUTOPOSITION", PcbTextAutoposition)
+
+    @property
+    def comment_auto_position(self) -> PcbTextAutoposition | None:
+        return self._enum_field("COMMENTAUTOPOSITION", PcbTextAutoposition)
+
+    @property
+    def channel_offset(self) -> int | None:
+        """
+        Numeric channel instance offset used by hierarchical/repeated projects.
+        """
+
+        return self._int_field("CHANNELOFFSET")
+
+    @property
+    def source_designator(self) -> str:
+        return self._raw_text("SOURCEDESIGNATOR")
+
+    @property
+    def source_unique_id(self) -> str:
+        return self._raw_text("SOURCEUNIQUEID")
+
+    @property
+    def source_unique_id_segments(self) -> tuple[str, ...]:
+        return self._altium_path_segments(self.source_unique_id)
+
+    @property
+    def source_hierarchical_path(self) -> str:
+        return self._raw_text("SOURCEHIERARCHICALPATH")
+
+    @property
+    def source_hierarchy_segments(self) -> tuple[str, ...]:
+        return self._altium_path_segments(self.source_hierarchical_path)
+
+    @property
     def source_footprint_library(self) -> str:
-        return str(self.raw_record.get("SOURCEFOOTPRINTLIBRARY", "") or "")
+        return self._raw_text("SOURCEFOOTPRINTLIBRARY")
 
     @property
     def source_footprint_library_name(self) -> str:
@@ -104,15 +179,47 @@ class AltiumPcbComponent:
 
     @property
     def source_lib_reference(self) -> str:
-        return str(self.raw_record.get("SOURCELIBREFERENCE", "") or "")
+        return self._raw_text("SOURCELIBREFERENCE")
+
+    @property
+    def source_component_library(self) -> str:
+        return self._raw_text("SOURCECOMPONENTLIBRARY")
+
+    @property
+    def source_component_library_identifier_kind(
+        self,
+    ) -> PcbLibIdentifierKind | None:
+        return self._enum_field(
+            "SOURCECOMPLIBIDENTIFIERKIND", PcbLibIdentifierKind
+        )
+
+    @property
+    def source_component_library_identifier(self) -> str:
+        return self._raw_text("SOURCECOMPLIBRARYIDENTIFIER")
 
     @property
     def footprint_description(self) -> str:
-        return str(self.raw_record.get("FOOTPRINTDESCRIPTION", "") or "")
+        return self._raw_text("FOOTPRINTDESCRIPTION")
 
     @property
     def height(self) -> str:
         return str(self.raw_record.get("HEIGHT", "0mil") or "0mil")
+
+    @property
+    def lock_strings(self) -> bool | None:
+        return self._optional_bool_flag("LOCKSTRINGS")
+
+    @property
+    def enable_pin_swapping(self) -> bool | None:
+        return self._optional_bool_flag("ENABLEPINSWAPPING")
+
+    @property
+    def enable_part_swapping(self) -> bool | None:
+        return self._optional_bool_flag("ENABLEPARTSWAPPING")
+
+    @property
+    def jumpers_visible(self) -> bool | None:
+        return self._optional_bool_flag("JUMPERSVISIBLE")
 
     @staticmethod
     def _make_mils(s: str) -> float:

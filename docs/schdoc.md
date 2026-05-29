@@ -85,6 +85,31 @@ sheet colors, sheet-number spacing, and the sheet system font. It does not copy
 template identity, vault/release GUIDs, sheet number, or project/page
 parameters.
 
+## Embedded Images
+
+`AltiumSchDoc` preserves embedded IMAGE payloads in the schematic Storage
+stream. When Altium stores an image as a BMP preview plus a native payload such
+as `TdxPNGImage`, SVG rendering and `extract_embedded_images(...)` prefer the
+native payload so PNG alpha is preserved. Plain 32-bit BMP alpha is preserved
+when present; plain 24-bit BMP remains opaque.
+
+Use `schdoc.extract_embedded_images(output_dir)` when writing embedded images
+as standalone files. Direct `image.image_data` access is a preservation API: it
+returns the raw Storage payload and may include Altium wrapper bytes before the
+native image. Code that needs image files should not hash or write
+`image.image_data` directly unless it intentionally wants the exact stored
+payload.
+
+## SVG Rendering
+
+`AltiumSchDoc.to_svg(...)` accepts `SchSvgRenderOptions`. Normal review output
+includes a root `viewBox` in schematic pixel-canvas coordinates. Strict
+native/oracle output from `SchSvgRenderOptions.native_altium()` omits the root
+viewBox by default so comparison lanes can preserve the native export shape.
+
+Set `SchSvgRenderOptions(include_view_box=False)` when a caller needs the
+normal renderer profile without a root viewBox.
+
 ## Examples
 
 Start with:

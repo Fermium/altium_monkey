@@ -534,6 +534,43 @@ requires_extra = []
 tags = ["pcbdoc", "mutation", "via", "ipc4761", "tenting", "mask-expansion"]
 
 [[examples]]
+id = "pcbdoc_add_differential_pairs"
+title = "Add PCB differential pairs"
+summary = "Create a PcbDoc from scratch, add differential-pair objects with routed member nets, and save the generated board plus a JSON summary."
+areas = ["pcbdoc", "mutation"]
+status = "ready"
+entrypoint = "pcbdoc_add_differential_pairs/pcbdoc_add_differential_pairs.py"
+doc = "pcbdoc_add_differential_pairs/README.md"
+inputs = []
+assets = []
+outputs = [
+  "pcbdoc_add_differential_pairs/output/pcbdoc_add_differential_pairs.PcbDoc",
+  "pcbdoc_add_differential_pairs/output/pcbdoc_add_differential_pairs.json",
+]
+requires_extra = []
+tags = ["pcbdoc", "mutation", "differential-pair", "nets", "routing"]
+
+[[examples]]
+id = "pcbdoc_diff_pair_report"
+title = "Report PCB differential pairs"
+summary = "Load the RT Super C1 project, read PcbDoc differential-pair objects and classes, print a table, and write JSON plus text reports."
+areas = ["pcbdoc", "design"]
+status = "ready"
+entrypoint = "pcbdoc_diff_pair_report/pcbdoc_diff_pair_report.py"
+doc = "pcbdoc_diff_pair_report/README.md"
+inputs = [
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PrjPcb",
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PCBdoc",
+]
+assets = []
+outputs = [
+  "pcbdoc_diff_pair_report/output/pcbdoc_diff_pair_report.json",
+  "pcbdoc_diff_pair_report/output/pcbdoc_diff_pair_report.txt",
+]
+requires_extra = []
+tags = ["pcbdoc", "project", "differential-pair", "classes", "report"]
+
+[[examples]]
 id = "pcbdoc_mutate_via_ipc4761"
 title = "Mutate PCB vias to IPC-4761 Type7"
 summary = "Copy the RT Super C1 project, find all 12 mil diameter / 6 mil hole vias, set them to IPC-4761 Type7 filling and capping, and save the mutated project."
@@ -777,7 +814,7 @@ outputs = [
   "pcblib_synthesize_power_resistor_lib/output/step_models/",
   "pcblib_synthesize_power_resistor_lib/output/synthesis_manifest.json",
 ]
-requires_extra = []
+requires_extra = ["examples"]
 tags = ["generation", "library", "footprint", "through-hole", "embedded-model", "step", "cadquery"]
 
 [[examples]]
@@ -1051,6 +1088,114 @@ assets = [
 outputs = ["outjob_runner/output/outjob_runner_summary.json"]
 requires_extra = ["altium_designer_for_run_mode"]
 tags = ["project", "outjob", "runner", "automation", "altium-launcher"]
+
+[[examples]]
+id = "hello_draftsman"
+title = "Create a Draftsman hello project"
+summary = "Generate a PrjPcb with one SchDoc, one PcbDoc, and one linked A3 Draftsman document containing a Comic Sans note and embedded image."
+areas = ["draftsman", "prjpcb", "schdoc", "pcbdoc"]
+status = "ready"
+entrypoint = "hello_draftsman/hello_draftsman.py"
+doc = "hello_draftsman/README.md"
+inputs = []
+assets = ["hello_draftsman/assets/monkey.png"]
+outputs = [
+  "hello_draftsman/output/HELLO-DRAFTSMAN.PrjPcb",
+  "hello_draftsman/output/HELLO-DRAFTSMAN.SchDoc",
+  "hello_draftsman/output/HELLO-DRAFTSMAN.PcbDoc",
+  "hello_draftsman/output/HELLO-DRAFTSMAN.PCBDwf",
+  "hello_draftsman/output/project_manifest.json",
+]
+requires_extra = []
+tags = ["hello-world", "draftsman", "pcbdwf", "project", "generation", "note"]
+
+[[examples]]
+id = "draftsman_add_image"
+title = "Add text and an embedded image to Draftsman"
+summary = "Create an A3 Draftsman document, place centered embedded image bytes, and add a text item above the image."
+areas = ["draftsman", "mutation", "image"]
+status = "ready"
+entrypoint = "draftsman_add_image/draftsman_add_image.py"
+doc = "draftsman_add_image/README.md"
+inputs = []
+assets = ["draftsman_add_image/assets/monkey.png"]
+outputs = [
+  "draftsman_add_image/output/draftsman_add_image.PCBDwf",
+  "draftsman_add_image/output/draftsman_add_image.json",
+]
+requires_extra = []
+tags = ["draftsman", "pcbdwf", "generation", "text", "embedded-image"]
+
+[[examples]]
+id = "draftsman_multipage_notes"
+title = "Create a multi-page Draftsman notes document"
+summary = "Generate a minimal project with empty SchDoc/PcbDoc files, create a linked two-page Draftsman document, place page-scoped notes, and write a lookup summary."
+areas = ["draftsman", "prjpcb", "schdoc", "pcbdoc"]
+status = "ready"
+entrypoint = "draftsman_multipage_notes/draftsman_multipage_notes.py"
+doc = "draftsman_multipage_notes/README.md"
+inputs = []
+assets = []
+outputs = [
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.PrjPcb",
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.SchDoc",
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.PcbDoc",
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.PCBDwf",
+  "draftsman_multipage_notes/output/draftsman_multipage_notes.json",
+]
+requires_extra = []
+tags = ["draftsman", "pcbdwf", "multipage", "notes", "project"]
+
+[[examples]]
+id = "draftsman_create_blank_project"
+title = "Create a blank linked Draftsman project"
+summary = "Copy the RT Super C1 project into an output workspace, create a blank AD25-profile PCBDwf linked to the board, register it in the PrjPcb, and write a JSON summary."
+areas = ["draftsman", "pcbdoc", "project"]
+status = "ready"
+entrypoint = "draftsman_create_blank_project/draftsman_create_blank_project.py"
+doc = "draftsman_create_blank_project/README.md"
+inputs = []
+assets = [
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PrjPcb",
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PCBdoc",
+]
+outputs = [
+  "draftsman_create_blank_project/output/RT_SUPER_C1_BLANK_DRAFTSMAN/",
+  "draftsman_create_blank_project/output/RT_SUPER_C1_BLANK_DRAFTSMAN/RT_SUPER_C1_Blank.PCBDwf",
+  "draftsman_create_blank_project/output/draftsman_create_blank_project.json",
+]
+requires_extra = []
+tags = ["draftsman", "pcbdwf", "generation", "blank-template", "project"]
+
+[[examples]]
+id = "draftsman_netclass_autodoc"
+title = "Generate Draftsman net-class highlight pages"
+summary = "Read JSON configs for Bunny Brain, RT Super C1, and loz-old-man, synthesize experimental board-assembly-view Draftsman pages with highlighted routed classes, and write per-project manifests."
+areas = ["draftsman", "pcbdoc", "svg"]
+status = "experimental"
+entrypoint = "draftsman_netclass_autodoc/draftsman_netclass_autodoc.py"
+doc = "draftsman_netclass_autodoc/README.md"
+inputs = [
+  "draftsman_netclass_autodoc/configs/bunny_brain.json",
+  "draftsman_netclass_autodoc/configs/rt_super_c1.json",
+  "draftsman_netclass_autodoc/configs/loz_old_man.json",
+]
+assets = [
+  "assets/projects/bunny_brain/bunny_brain_D.PrjPcb",
+  "assets/projects/bunny_brain/bunny_brain_D.PCBdoc",
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PrjPcb",
+  "assets/projects/rt_super_c1/RT_SUPER_C1.PCBdoc",
+  "assets/projects/loz-old-man/loz-old-man.PrjPcb",
+  "assets/projects/loz-old-man/SB0037A.PcbDoc",
+]
+outputs = [
+  "draftsman_netclass_autodoc/output/draftsman_netclass_autodoc_manifest.json",
+  "draftsman_netclass_autodoc/output/bunny_brain/",
+  "draftsman_netclass_autodoc/output/rt_super_c1/",
+  "draftsman_netclass_autodoc/output/loz_old_man/",
+]
+requires_extra = []
+tags = ["draftsman", "pcbdwf", "pcbdoc", "net-class", "differential-pair", "experimental"]
 
 [[examples]]
 id = "schdoc_extract_images"

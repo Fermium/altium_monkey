@@ -135,6 +135,13 @@ The hierarchy block contains:
 ### PNP
 
 `pnp.units` is currently `mm`.
+`pnp.position_mode` is currently `altium-pick-place` for design JSON.
+
+`altium-pick-place` matches Altium's Pick Place export by using the center of
+the bounding box of component-owned pad anchor points, with component-origin
+fallback for components that have no owned pads. Direct API callers can request
+`component-origin` from `AltiumDesign.to_pnp(...)` when they need the footprint
+placement origin instead.
 
 Each placement contains:
 
@@ -270,7 +277,7 @@ Required root fields:
 
 - `all_layer_ids`
 - `layer_id_to_key`
-- `layer_id_to_name`
+- `layer_id_to_name`: stable layer tokens such as `TOP`, `BOTTOM`, or `DRILLS`
 
 `lookup` contains:
 
@@ -295,4 +302,9 @@ Each component summary contains:
 Element-level SVG metadata uses ordinary `data-*` attributes. Common attributes
 include `data-layer-*`, `data-net-*`, `data-component-*`, `data-feature`, and
 drill-specific `data-hole-*` attributes.
+
+Layer element metadata keeps stable tokens and display labels separate:
+`data-layer-name` is token-oriented, while `data-layer-display-name` is the
+human-facing label. Parsed PcbDoc output uses resolved board layer-stack names
+when available and otherwise falls back to the default `PcbLayer` display label.
 

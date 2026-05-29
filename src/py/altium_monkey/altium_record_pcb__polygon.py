@@ -124,9 +124,17 @@ class AltiumPcbPolygon:
     keepout: bool = False
     locked: bool = False
     shelved: bool = False
+    polygon_outline: bool = False
+    primitive_lock: bool = True
     obey_polygon_cutout: bool = True
     user_routed: bool = True
-    pour_over: bool = True
+    pour_over: bool = False
+    pour_over_style: int = 2
+    use_octagons: bool = False
+    ignore_violations: bool = False
+    selection: bool = False
+    restore_layer: str = "UNKNOWN"
+    restore_net: str = ""
 
     # Raw record
     _raw_record: dict[str, Any] = field(default_factory=dict)
@@ -185,9 +193,17 @@ class AltiumPcbPolygon:
         poly.keepout = record.get('KEEPOUT', 'FALSE') == 'TRUE'
         poly.locked = record.get('LOCKED', 'FALSE') == 'TRUE'
         poly.shelved = record.get('SHELVED', 'FALSE') == 'TRUE'
+        poly.polygon_outline = record.get('POLYGONOUTLINE', 'FALSE') == 'TRUE'
+        poly.primitive_lock = record.get('PRIMITIVELOCK', 'TRUE') == 'TRUE'
         poly.obey_polygon_cutout = record.get('OBEYPOLYGONCUTOUT', 'TRUE') == 'TRUE'
         poly.user_routed = record.get('USERROUTED', 'TRUE') == 'TRUE'
-        poly.pour_over = record.get('POUROVER', 'TRUE') == 'TRUE'
+        poly.pour_over = record.get('POUROVER', 'FALSE') == 'TRUE'
+        poly.pour_over_style = int(record.get('POUROVERSTYLE', 2))
+        poly.use_octagons = record.get('USEOCTAGONS', 'FALSE') == 'TRUE'
+        poly.ignore_violations = record.get('IGNOREVIOLATIONS', 'FALSE') == 'TRUE'
+        poly.selection = record.get('SELECTION', 'FALSE') == 'TRUE'
+        poly.restore_layer = record.get('RESTORELAYER', 'UNKNOWN')
+        poly.restore_net = record.get('RESTORENET', '')
 
         # Parse outline vertices (VX0-VXn, VY0-VYn, KIND0-KINDn, etc.)
         poly.outline = cls._parse_vertices(record, prefix='V')
@@ -323,9 +339,17 @@ class AltiumPcbPolygon:
         record['KEEPOUT'] = 'TRUE' if self.keepout else 'FALSE'
         record['LOCKED'] = 'TRUE' if self.locked else 'FALSE'
         record['SHELVED'] = 'TRUE' if self.shelved else 'FALSE'
+        record['POLYGONOUTLINE'] = 'TRUE' if self.polygon_outline else 'FALSE'
+        record['PRIMITIVELOCK'] = 'TRUE' if self.primitive_lock else 'FALSE'
         record['OBEYPOLYGONCUTOUT'] = 'TRUE' if self.obey_polygon_cutout else 'FALSE'
         record['USERROUTED'] = 'TRUE' if self.user_routed else 'FALSE'
         record['POUROVER'] = 'TRUE' if self.pour_over else 'FALSE'
+        record['POUROVERSTYLE'] = str(self.pour_over_style)
+        record['USEOCTAGONS'] = 'TRUE' if self.use_octagons else 'FALSE'
+        record['IGNOREVIOLATIONS'] = 'TRUE' if self.ignore_violations else 'FALSE'
+        record['SELECTION'] = 'TRUE' if self.selection else 'FALSE'
+        record['RESTORELAYER'] = self.restore_layer
+        record['RESTORENET'] = self.restore_net
 
         # Serialize outline vertices
         self._serialize_vertices(record, self.outline, prefix='V')

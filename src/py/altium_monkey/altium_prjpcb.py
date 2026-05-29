@@ -21,6 +21,7 @@ import logging
 import re
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -116,6 +117,240 @@ class NetIdentifierScope(IntEnum):
     STRICT_HIERARCHICAL = 4  # eFlatten_Hierarchical_Strict: Strict hierarchical
 
 
+def _parse_altium_bool(value: object, *, default: bool = False) -> bool:
+    """
+    Parse an Altium boolean value from INI text.
+
+    Altium project files commonly use `1`/`0`, but some project-adjacent
+    formats use `TRUE`/`FALSE`. Unknown values return `default`.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n", "off", ""}:
+        return False
+    return default
+
+
+def _format_altium_bool(value: bool) -> str:
+    """
+    Format a project-file boolean using Altium's common `1`/`0` convention.
+    """
+    return "1" if bool(value) else "0"
+
+
+def _option_value(
+    options: list[DocumentOption],
+    key: str,
+    *,
+    fallback: str | None = None,
+) -> str | None:
+    target = key.lower()
+    for option_key, value in options:
+        if option_key.lower() == target:
+            return value
+    return fallback
+
+
+def _set_document_option(
+    document: DocumentEntry,
+    key: str,
+    value: str,
+) -> None:
+    options = list(document.get("options", []))
+    target = key.lower()
+    for index, (option_key, _) in enumerate(options):
+        if option_key.lower() == target:
+            options[index] = (option_key, value)
+            break
+    else:
+        options.append((key, value))
+    document["options"] = options
+
+
+@public_api
+@dataclass(frozen=True, slots=True)
+class AltiumPrjPcbClassGenerationOptions:
+    """
+    Project-wide class-generation policy from `.PrjPcb` `[PrjClassGen]`.
+
+    These options control which schematic/user-defined classes Altium offers
+    or pushes during compile/ECO workflows. They do not themselves create PCB
+    classes; they preserve the policy that lets Altium transfer directive data
+    such as schematic `ClassName` and `DifferentialPairClassName` parameters
+    into PcbDoc `Classes6/Data`.
+
+    Attributes map directly to Altium project keys:
+    - `comp_class_manual_enabled`: `CompClassManualEnabled`
+    - `comp_class_manual_room_enabled`: `CompClassManualRoomEnabled`
+    - `net_class_auto_bus_enabled`: `NetClassAutoBusEnabled`
+    - `net_class_auto_comp_enabled`: `NetClassAutoCompEnabled`
+    - `net_class_auto_named_harness_enabled`: `NetClassAutoNamedHarnessEnabled`
+    - `net_class_manual_enabled`: `NetClassManualEnabled`
+    - `net_class_separate_for_bus_sections`: `NetClassSeparateForBusSections`
+    """
+
+    comp_class_manual_enabled: bool = False
+    comp_class_manual_room_enabled: bool = False
+    net_class_auto_bus_enabled: bool = True
+    net_class_auto_comp_enabled: bool = False
+    net_class_auto_named_harness_enabled: bool = False
+    net_class_manual_enabled: bool = False
+    net_class_separate_for_bus_sections: bool = False
+
+    @classmethod
+    def from_config(
+        cls,
+        config: configparser.ConfigParser,
+    ) -> "AltiumPrjPcbClassGenerationOptions":
+        """
+        Build options from a project config, using observed Altium defaults when
+        `[PrjClassGen]` is absent.
+        """
+        section = "PrjClassGen"
+        return cls(
+            comp_class_manual_enabled=config.getboolean(
+                section, "CompClassManualEnabled", fallback=False
+            ),
+            comp_class_manual_room_enabled=config.getboolean(
+                section, "CompClassManualRoomEnabled", fallback=False
+            ),
+            net_class_auto_bus_enabled=config.getboolean(
+                section, "NetClassAutoBusEnabled", fallback=True
+            ),
+            net_class_auto_comp_enabled=config.getboolean(
+                section, "NetClassAutoCompEnabled", fallback=False
+            ),
+            net_class_auto_named_harness_enabled=config.getboolean(
+                section, "NetClassAutoNamedHarnessEnabled", fallback=False
+            ),
+            net_class_manual_enabled=config.getboolean(
+                section, "NetClassManualEnabled", fallback=False
+            ),
+            net_class_separate_for_bus_sections=config.getboolean(
+                section, "NetClassSeparateForBusSections", fallback=False
+            ),
+        )
+
+    def write_to_config(self, config: configparser.ConfigParser) -> None:
+        """
+        Write this policy to `[PrjClassGen]`.
+        """
+        section = "PrjClassGen"
+        if not config.has_section(section):
+            config.add_section(section)
+        config.set(
+            section,
+            "CompClassManualEnabled",
+            _format_altium_bool(self.comp_class_manual_enabled),
+        )
+        config.set(
+            section,
+            "CompClassManualRoomEnabled",
+            _format_altium_bool(self.comp_class_manual_room_enabled),
+        )
+        config.set(
+            section,
+            "NetClassAutoBusEnabled",
+            _format_altium_bool(self.net_class_auto_bus_enabled),
+        )
+        config.set(
+            section,
+            "NetClassAutoCompEnabled",
+            _format_altium_bool(self.net_class_auto_comp_enabled),
+        )
+        config.set(
+            section,
+            "NetClassAutoNamedHarnessEnabled",
+            _format_altium_bool(self.net_class_auto_named_harness_enabled),
+        )
+        config.set(
+            section,
+            "NetClassManualEnabled",
+            _format_altium_bool(self.net_class_manual_enabled),
+        )
+        config.set(
+            section,
+            "NetClassSeparateForBusSections",
+            _format_altium_bool(self.net_class_separate_for_bus_sections),
+        )
+
+
+@public_api
+@dataclass(frozen=True, slots=True)
+class AltiumPrjPcbDocumentClassGenerationOptions:
+    """
+    Per-document class-generation options from a `.PrjPcb` `DocumentN` section.
+
+    These options are carried on individual source/library documents and control
+    document-scoped class generation behavior during Altium compile/ECO flows.
+    They are preserved as document options on save.
+
+    Attributes map directly to Altium document keys:
+    - `component_class_auto_enabled`: `ClassGenCCAutoEnabled`
+    - `component_class_auto_room_enabled`: `ClassGenCCAutoRoomEnabled`
+    - `net_class_auto_scope`: `ClassGenNCAutoScope`
+    - `generate_class_cluster`: `GenerateClassCluster`
+    """
+
+    component_class_auto_enabled: bool = True
+    component_class_auto_room_enabled: bool = False
+    net_class_auto_scope: str = "None"
+    generate_class_cluster: bool = False
+
+    @classmethod
+    def from_document_options(
+        cls,
+        options: list[DocumentOption],
+    ) -> "AltiumPrjPcbDocumentClassGenerationOptions":
+        """
+        Build options from one `DocumentN` option list.
+        """
+        return cls(
+            component_class_auto_enabled=_parse_altium_bool(
+                _option_value(options, "ClassGenCCAutoEnabled", fallback="1"),
+                default=True,
+            ),
+            component_class_auto_room_enabled=_parse_altium_bool(
+                _option_value(options, "ClassGenCCAutoRoomEnabled", fallback="0"),
+                default=False,
+            ),
+            net_class_auto_scope=str(
+                _option_value(options, "ClassGenNCAutoScope", fallback="None")
+                or "None"
+            ),
+            generate_class_cluster=_parse_altium_bool(
+                _option_value(options, "GenerateClassCluster", fallback="0"),
+                default=False,
+            ),
+        )
+
+    def write_to_document(self, document: DocumentEntry) -> None:
+        """
+        Write this policy into one project document entry.
+        """
+        _set_document_option(
+            document,
+            "ClassGenCCAutoEnabled",
+            _format_altium_bool(self.component_class_auto_enabled),
+        )
+        _set_document_option(
+            document,
+            "ClassGenCCAutoRoomEnabled",
+            _format_altium_bool(self.component_class_auto_room_enabled),
+        )
+        _set_document_option(document, "ClassGenNCAutoScope", self.net_class_auto_scope)
+        _set_document_option(
+            document,
+            "GenerateClassCluster",
+            _format_altium_bool(self.generate_class_cluster),
+        )
+
+
 def _normalize_altium_path(path: str, is_directory: bool = False) -> str:
     """
     Normalize a path to Altium's expected format (Windows-style).
@@ -142,6 +377,17 @@ def _normalize_altium_path(path: str, is_directory: bool = False) -> str:
         normalized += "\\"
 
     return normalized
+
+
+def _altium_path_name(path: str | Path) -> str:
+    """
+    Return the final name from an Altium project path on any host platform.
+
+    `.PrjPcb` paths use Windows separators even when parsed on macOS/Linux, so
+    `Path(...).name` is not sufficient for project-relative paths.
+    """
+    normalized = str(path).replace("\\", "/")
+    return normalized.rsplit("/", 1)[-1]
 
 
 def _numbered_section_index(section: str, prefix: str) -> int | None:
@@ -985,6 +1231,101 @@ class AltiumPrjPcb:
         if fallback.is_file():
             return AltiumPrjPcbOutJob(self, fallback)
         raise FileNotFoundError(f"OutJob not found for project: {requested_name}")
+
+    @property
+    def class_generation_options(self) -> AltiumPrjPcbClassGenerationOptions:
+        """
+        Get project-wide class-generation policy from `[PrjClassGen]`.
+
+        This policy controls whether Altium transfers schematic/user-defined
+        classes into PCB classes during compile/ECO workflows. For differential
+        pair fixtures, `net_class_manual_enabled=True` is the project switch
+        that lets schematic directive `ClassName` and
+        `DifferentialPairClassName` values become PCB `Classes6/Data` records.
+        """
+        return AltiumPrjPcbClassGenerationOptions.from_config(self.config)
+
+    def set_class_generation_options(
+        self,
+        options: AltiumPrjPcbClassGenerationOptions,
+    ) -> None:
+        """
+        Set project-wide class-generation policy in `[PrjClassGen]`.
+
+        Args:
+            options: Complete class-generation policy to write.
+        """
+        options.write_to_config(self.config)
+
+    @property
+    def document_class_generation_options(
+        self,
+    ) -> dict[str, AltiumPrjPcbDocumentClassGenerationOptions]:
+        """
+        Get class-generation options for each project document by document path.
+
+        The returned keys are the project-relative `DocumentPath` strings stored
+        in the `.PrjPcb`.
+        """
+        return {
+            document["path"]: AltiumPrjPcbDocumentClassGenerationOptions.from_document_options(
+                document["options"]
+            )
+            for document in self.documents
+        }
+
+    def _resolve_document_index(self, document: int | str | Path) -> int:
+        """
+        Resolve a document index from either a zero-based index or document path.
+        """
+        if isinstance(document, int):
+            if document < 0 or document >= len(self.documents):
+                raise IndexError(
+                    f"Document index {document} out of range for {len(self.documents)} documents"
+                )
+            return document
+
+        requested = _normalize_altium_path(str(document), is_directory=False).lower()
+        requested_name = _altium_path_name(document).lower()
+        for index, entry in enumerate(self.documents):
+            entry_path = str(entry.get("path", ""))
+            if entry_path.lower() == requested:
+                return index
+            if _altium_path_name(entry_path).lower() == requested_name:
+                return index
+        raise KeyError(f"Project document not found: {document}")
+
+    def get_document_class_generation_options(
+        self,
+        document: int | str | Path,
+    ) -> AltiumPrjPcbDocumentClassGenerationOptions:
+        """
+        Get class-generation options for one project document.
+
+        Args:
+            document: Zero-based document index, project-relative path, or
+                filename.
+        """
+        entry = self.documents[self._resolve_document_index(document)]
+        return AltiumPrjPcbDocumentClassGenerationOptions.from_document_options(
+            entry["options"]
+        )
+
+    def set_document_class_generation_options(
+        self,
+        document: int | str | Path,
+        options: AltiumPrjPcbDocumentClassGenerationOptions,
+    ) -> None:
+        """
+        Set class-generation options for one project document.
+
+        Args:
+            document: Zero-based document index, project-relative path, or
+                filename.
+            options: Complete document-level class-generation policy to write.
+        """
+        entry = self.documents[self._resolve_document_index(document)]
+        options.write_to_document(entry)
 
     @property
     def net_identifier_scope(self) -> NetIdentifierScope:

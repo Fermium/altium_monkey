@@ -49,9 +49,7 @@ def _display_name_for_layer(layer: PcbLayer, stack: ResolvedLayerStack) -> str:
     resolved = stack.layer_by_legacy_id(layer.value)
     if resolved is not None:
         return resolved.display_name
-    if layer == PcbLayer.MULTI_LAYER:
-        return "Multi-Layer"
-    return layer.name.replace("_", " ").title()
+    return layer.to_display_name()
 
 
 def resolve_pcb_svg_layer(

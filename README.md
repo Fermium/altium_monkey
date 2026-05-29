@@ -36,6 +36,7 @@ Core file types:
 5. `.PrjPcb`
 6. `.OutJob`
 7. `.IntLib` extraction
+8. `.PCBDwf` Draftsman files, currently experimental
 
 Common workflows:
 
@@ -48,6 +49,8 @@ Common workflows:
 7. author and mutate PCB vias, including IPC-4761 protection metadata
 8. extract embedded fonts and 3D models
 9. generate project containers and run associated OutJobs
+10. create experimental Draftsman pages with notes, text, pictures, and
+    generated board-assembly-view highlight artwork
 
 ## Install
 
@@ -68,8 +71,11 @@ path for using the expected interpreter and dependencies without local
 environment drift.
 
 The package includes dependencies for SVG text shaping and STEP-model bounds.
-See [RELEASE_NOTES.md](RELEASE_NOTES.md) for platform and Python-version
-boundaries.
+STEP bounds use `wn-geometer`, with published wheels currently available for
+Windows amd64, macOS arm64, and Linux x86_64 tagged `manylinux_2_39`. See
+[RELEASE_NOTES.md](RELEASE_NOTES.md) for platform and Python-version
+boundaries. The CadQuery dependency is only needed for the public example that
+synthesizes new STEP models.
 
 ## Public API Compatibility
 
@@ -134,10 +140,18 @@ The public docs are Markdown-first for this release:
 7. [IntLib](docs/intlib.md)
 8. [API patterns](docs/api_patterns/index.md)
 9. [Schema contracts](docs/schemas/index.md)
-10. [Examples](docs/examples/index.md)
+10. [Format contracts](docs/format_contracts/index.md)
+11. [Examples](docs/examples/index.md)
 
 The examples are the best starting point for public API usage. They are kept in
 [`examples/`](examples/) and are indexed from `examples/manifest.toml`.
+
+## Contributing
+
+This repository is a published mirror. Issues, minimal reproduction cases,
+documentation fixes, API feedback, and focused pull requests are welcome, but
+PRs may be adapted or reimplemented in the upstream development workspace before
+they are mirrored back here. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## API Shape
 

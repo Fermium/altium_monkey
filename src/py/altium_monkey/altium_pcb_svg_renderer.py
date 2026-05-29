@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .altium_board import resolve_outline_arc_segment
+from .altium_pcb_drill_rendering import should_render_via_drill_hole
 from .altium_embedded_font_helpers import safe_embedded_font_filename_component
 from .altium_resolved_layer_stack import resolved_layer_stack_from_pcbdoc
 from .altium_pcb_special_strings import (
@@ -84,6 +85,8 @@ class PcbSvgRenderOptions:
     svg_display_scale: float = 1.0
     # Optional unit suffix for width/height attrs (e.g. "mm", "px"). Empty keeps unitless attrs.
     svg_size_unit: str = ""
+    # Include a root SVG viewBox in PCB millimeter coordinates.
+    include_view_box: bool = True
     # Polygon definitions from Polygons6/Data are debug/reference geometry, not
     # rendered copper. Keep disabled by default to avoid non-copper overlays in
     # layer outputs (especially imported designs with many polygon definitions).
@@ -967,8 +970,11 @@ class PcbSvgRenderer:
             'version="1.1"',
             f'width="{width_attr}"',
             f'height="{height_attr}"',
-            f'viewBox="0 0 {ctx.fmt(ctx.width_mm)} {ctx.fmt(ctx.height_mm)}"',
         ]
+        if self.options.include_view_box:
+            svg_attrs.append(
+                f'viewBox="0 0 {ctx.fmt(ctx.width_mm)} {ctx.fmt(ctx.height_mm)}"'
+            )
         if not self.options.include_metadata:
             return svg_attrs
 
@@ -1546,7 +1552,8 @@ class PcbSvgRenderer:
             int(layer.value): layer.to_json_name() for layer in all_layers_for_metadata
         }
         layer_display_name_by_id = {
-            int(layer.value): layer.to_display_name() for layer in all_layers_for_metadata
+            int(layer.value): layer.to_display_name()
+            for layer in all_layers_for_metadata
         }
         layer_key_by_id = {layer_id: f"L{layer_id}" for layer_id in all_layer_ids}
         if has_drill_holes:
@@ -2333,7 +2340,9 @@ class PcbSvgRenderer:
     ) -> str:
         if not layer.is_copper():
             return layer_color
-        polygon_index = self._coerce_optional_int(getattr(primitive, "polygon_index", None))
+        polygon_index = self._coerce_optional_int(
+            getattr(primitive, "polygon_index", None)
+        )
         # Vendor custom pad shapes often arrive as unlinked copper regions.
         # Keep those in the layer color; only linked polygon pours use overlay color.
         if polygon_index is None or polygon_index in _UNLINKED_INDEX_SENTINELS:
@@ -2613,6 +2622,8 @@ class PcbSvgRenderer:
             if self._should_skip_primitive_for_svg(via):
                 continue
             if not via._spans_layer(layer):  # noqa: SLF001
+                continue
+            if not should_render_via_drill_hole(via):
                 continue
 
             hole_radius_mm = max(via.hole_size_mils * _MIL_TO_MM / 2.0, 0.0)

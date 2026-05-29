@@ -8,7 +8,9 @@ model from a standalone file on disk.
 
 The model checksum is computed by `AltiumPcbLib.add_embedded_model(...)`.
 `AltiumPcbFootprint.add_embedded_3d_model(...)` infers the STEP projection
-bounds and height through the core OCCT-backed geometry helper.
+bounds and height through `wn-geometer`. If STEP bounds are unavailable on the
+current host, footprint authoring can fall back to a rectangle around the
+footprint pads.
 
 ## What It Shows
 

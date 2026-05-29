@@ -1,0 +1,44 @@
+{
+  "schema": "altium-monkey.draftsman-netclass-autodoc.v1",
+  "source_project": "assets/projects/rt_super_c1/RT_SUPER_C1.PrjPcb",
+  "output_name": "rt_super_c1",
+  "sheet_size": "ANSI B",
+  "view_scale": 2.0,
+  "target_fill_ratio": 0.75,
+  "tile_gap_x_mm": 8.0,
+  "tile_gap_y_mm": 8.0,
+  "minimum_routing_length_mils": 10.0,
+  "connected_highlight_filter": true,
+  "auto_fit_scale": true,
+  "style": {
+    "context_copper": "#B8B8B8",
+    "smd_pad_copper": "#000000",
+    "through_hole_pad_copper": "#000000",
+    "via_pad_copper": "#000000",
+    "drill_hole": "#FFFFFF",
+    "non_plated_hole": "#808080",
+    "document_grid": "#BEBEBE"
+  },
+  "groups": [
+    {
+      "id": "usb_90_ohm",
+      "title": "USB 90 Ohm Differential Pair",
+      "net_classes": ["90-OHM"],
+      "differential_pair_classes": ["All Differential Pairs"],
+      "highlight_color": "#D00000",
+      "notes": [
+        "90 ohm differential-pair fabrication view.",
+        "Use this page as a controlled-impedance documentation reference."
+      ]
+    },
+    {
+      "id": "sdio",
+      "title": "SDIO Bus",
+      "net_classes": ["SDIO"],
+      "highlight_color": "#0057D8",
+      "notes": [
+        "SDIO is grouped as one view with each routed layer tiled on the same page."
+      ]
+    }
+  ]
+}

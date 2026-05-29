@@ -868,40 +868,10 @@ class AltiumBoard:
             if name:
                 return name
 
-        if layer_id == PcbLayer.TOP.value:
-            return "Top Layer"
-        if layer_id == PcbLayer.BOTTOM.value:
-            return "Bottom Layer"
-        if PcbLayer.TOP.value < layer_id < PcbLayer.BOTTOM.value:
-            return f"Mid-Layer {layer_id - PcbLayer.TOP.value}"
-        if layer_id == PcbLayer.TOP_OVERLAY.value:
-            return "Top Overlay"
-        if layer_id == PcbLayer.BOTTOM_OVERLAY.value:
-            return "Bottom Overlay"
-        if layer_id == PcbLayer.TOP_PASTE.value:
-            return "Top Paste"
-        if layer_id == PcbLayer.BOTTOM_PASTE.value:
-            return "Bottom Paste"
-        if layer_id == PcbLayer.TOP_SOLDER.value:
-            return "Top Solder"
-        if layer_id == PcbLayer.BOTTOM_SOLDER.value:
-            return "Bottom Solder"
-        if layer_id == PcbLayer.KEEPOUT.value:
-            return "Keep-Out Layer"
-        if layer_id == PcbLayer.DRILL_GUIDE.value:
-            return "Drill Guide"
-        if layer_id == PcbLayer.DRILL_DRAWING.value:
-            return "Drill Drawing"
-        if layer_id == PcbLayer.MULTI_LAYER.value:
-            return "Multi-Layer"
-        if (
-            PcbLayer.INTERNAL_PLANE_1.value
-            <= layer_id
-            <= PcbLayer.INTERNAL_PLANE_16.value
-        ):
-            return f"Internal Plane {layer_id - PcbLayer.INTERNAL_PLANE_1.value + 1}"
-        if PcbLayer.MECHANICAL_1.value <= layer_id <= PcbLayer.MECHANICAL_16.value:
-            return f"Mechanical {layer_id - PcbLayer.MECHANICAL_1.value + 1}"
+        try:
+            return PcbLayer(layer_id).to_display_name()
+        except ValueError:
+            pass
         return f"Unknown ({layer_id})"
 
     @staticmethod

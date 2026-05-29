@@ -12,6 +12,7 @@ import base64
 import math
 import struct
 import uuid
+import zlib
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -28,8 +29,23 @@ from .altium_pcb_stream_helpers import format_bool_text as _format_bool_text
 from .altium_pcb_stream_helpers import format_mil_value as _format_mil_value
 from .altium_pcb_stream_helpers import PcbKeyValueTextEntryMixin
 from .altium_ole import AltiumOleFile, AltiumOleWriter
-from .altium_board import AltiumBoard, AltiumBoardOutline, BoardOutlineVertex
-from .altium_pcb_enums import PcbGuidType, PcbIpc4761ViaType
+from .altium_board import (
+    AltiumBoard,
+    AltiumBoardOutline,
+    BoardOutlineVertex,
+    resolve_outline_arc_segment,
+)
+from .altium_pcb_enums import (
+    PcbGuidType,
+    PcbIpc4761ViaType,
+    PcbLibIdentifierKind,
+    PcbRegionKind,
+    PcbTextAutoposition,
+)
+from .altium_pcb_extended_primitive_information import (
+    AltiumPcbExtendedPrimitiveInformation,
+    parse_extended_primitive_information_stream,
+)
 from .altium_pcb_via_structure import (
     AltiumPcbViaStructure,
     AltiumPcbViaStructureLink,
@@ -46,8 +62,14 @@ from .altium_record_pcb__board_region import AltiumPcbBoardRegion
 from .altium_record_pcb__component_body import AltiumPcbComponentBody
 from .altium_record_pcb__model import AltiumPcbModel
 from .altium_record_pcb__net import AltiumPcbNet
+from .altium_record_pcb__polygon import AltiumPcbPolygon, PcbPolygonVertex
 from .altium_record_pcb__region import RegionVertex
 from .altium_record_pcb__netclass import AltiumPcbNetClass
+from .altium_record_pcb__differential_pair import (
+    AltiumPcbDifferentialPair,
+    build_differential_pair_stream,
+    parse_differential_pair_stream,
+)
 from .altium_pcb_enums import PadShape
 from .altium_record_types import PcbLayer
 from .altium_pcbdoc_builder_nets import (
@@ -168,6 +190,45 @@ _DEFAULT_TEXTS_WARNING_MESSAGES = (
     "Close this file immediately without saving.",
     "Saving this file will result in loss of data.",
 )
+
+
+def _build_embedded_font_record(
+    *,
+    name: str,
+    style: str,
+    compressed_data: bytes,
+) -> bytes:
+    def _utf16_field(value: str) -> bytes:
+        payload = str(value or "").encode("utf-16-le", errors="replace") + b"\x00\x00"
+        return struct.pack("<I", len(payload)) + payload
+
+    compressed = bytes(compressed_data)
+    return b"".join(
+        (
+            _utf16_field(name),
+            _utf16_field(_embedded_font_family_name(name=name, style=style)),
+            _utf16_field(style),
+            b"\x01\x00\x01",
+            struct.pack("<I", len(compressed)),
+            compressed,
+        )
+    )
+
+
+def _embedded_font_family_name(*, name: str, style: str) -> str:
+    name_text = str(name or "").strip()
+    style_text = str(style or "").strip()
+    if not name_text or not style_text:
+        return name_text
+    suffix = f" {style_text}"
+    if name_text.lower().endswith(suffix.lower()):
+        return name_text[: -len(suffix)].strip() or name_text
+    hyphen_suffix = f"-{style_text}"
+    if name_text.lower().endswith(hyphen_suffix.lower()):
+        return name_text[: -len(hyphen_suffix)].strip() or name_text
+    return name_text
+
+
 _DEFAULT_PCBDOC_CLASSES_DATA_B64 = (
     "1wAAAHxTRUxFQ1RJT049RkFMU0V8TEFZRVI9TVVMVElMQVlFUnxMT0NLRUQ9RkFMU0V8UE9MWUdPTk9VVExJTkU9RkFMU0V8VVNFUlJPVVRFRD1UUlVFfEtF"
     "RVBPVVQ9RkFMU0V8VU5JT05JTkRFWD0wfE5BTUU9QWxsIFBvbHlnb25zfEtJTkQ9N3xTVVBFUkNMQVNTPVRSVUV8U0VMRUNURUQ9RkFMU0V8U0NIQVVUT0dF"
@@ -845,6 +906,106 @@ def _outline_from_points(
     )
 
 
+def _outline_points_for_board_region(
+    outline: AltiumBoardOutline,
+) -> tuple[tuple[float, float], ...]:
+    """Return line-only BoardRegions vertices while preserving Board6 arc intent."""
+    vertices = list(outline.vertices)
+    if len(vertices) < 3:
+        return outline.points_mils
+
+    first = vertices[0]
+    last = vertices[-1]
+    if math.isclose(first.x_mils, last.x_mils, abs_tol=1e-9) and math.isclose(
+        first.y_mils,
+        last.y_mils,
+        abs_tol=1e-9,
+    ):
+        vertices = vertices[:-1]
+    if len(vertices) < 3:
+        return outline.points_mils
+
+    points: list[tuple[float, float]] = []
+    count = len(vertices)
+    for index, current in enumerate(vertices):
+        nxt = vertices[(index + 1) % count]
+        if not points:
+            points.append((current.x_mils, current.y_mils))
+        if current.is_arc and current.radius_mils > 0:
+            points.extend(_sample_board_outline_arc(current, nxt)[1:])
+        else:
+            points.append((nxt.x_mils, nxt.y_mils))
+
+    if len(points) >= 2:
+        first_point = points[0]
+        last_point = points[-1]
+        if math.isclose(first_point[0], last_point[0], abs_tol=1e-9) and math.isclose(
+            first_point[1],
+            last_point[1],
+            abs_tol=1e-9,
+        ):
+            points.pop()
+    return tuple(points)
+
+
+def _sample_board_outline_arc(
+    current: BoardOutlineVertex,
+    nxt: BoardOutlineVertex,
+) -> list[tuple[float, float]]:
+    """Sample an Altium Board6 arc for the line-only BoardRegions stream."""
+    try:
+        clockwise, sweep_deg = resolve_outline_arc_segment(current, nxt)
+    except Exception:
+        clockwise = False
+        start_deg = math.degrees(
+            math.atan2(
+                current.y_mils - current.center_y_mils,
+                current.x_mils - current.center_x_mils,
+            )
+        )
+        end_deg = math.degrees(
+            math.atan2(
+                nxt.y_mils - current.center_y_mils,
+                nxt.x_mils - current.center_x_mils,
+            )
+        )
+        sweep_deg = (end_deg - start_deg) % 360.0
+        if sweep_deg <= 0.0:
+            sweep_deg = 360.0
+
+    radius = float(current.radius_mils or 0.0)
+    if radius <= 0.0 or sweep_deg <= 0.0:
+        return [(current.x_mils, current.y_mils), (nxt.x_mils, nxt.y_mils)]
+
+    arc_length = math.radians(sweep_deg) * radius
+    segment_count = max(
+        1,
+        min(
+            180,
+            max(
+                int(math.ceil(sweep_deg / 5.0)),
+                int(math.ceil(arc_length / 25.0)),
+            ),
+        ),
+    )
+    start_angle = math.atan2(
+        current.y_mils - current.center_y_mils,
+        current.x_mils - current.center_x_mils,
+    )
+    direction = -1.0 if clockwise else 1.0
+    points = [(current.x_mils, current.y_mils)]
+    for step in range(1, segment_count + 1):
+        angle = start_angle + direction * math.radians(sweep_deg) * (step / segment_count)
+        points.append(
+            (
+                current.center_x_mils + radius * math.cos(angle),
+                current.center_y_mils + radius * math.sin(angle),
+            )
+        )
+    points[-1] = (nxt.x_mils, nxt.y_mils)
+    return points
+
+
 def _parse_bool_text(value: str | None) -> bool | None:
     if value is None:
         return None
@@ -870,6 +1031,39 @@ def _parse_mil_text(value: str | None) -> float | None:
     if normalized.lower().endswith("mil"):
         normalized = normalized[:-3]
     return float(normalized)
+
+
+def _parse_text_records(data: bytes) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    cursor = 0
+    while cursor + 4 <= len(data):
+        length_bytes = data[cursor : cursor + 4]
+        cursor += 4
+        actual_length = int.from_bytes(
+            length_bytes[:3] if length_bytes[3] else length_bytes,
+            byteorder="little",
+        )
+        record_bytes = data[cursor : cursor + actual_length]
+        cursor += actual_length
+        if length_bytes[3] != 0:
+            continue
+        record: dict[str, str] = {}
+        for pair in parse_byte_record(record_bytes.rstrip(b"\x00")):
+            text = decode_byte_array(pair)
+            if "=" not in text:
+                continue
+            key, value = text.split("=", 1)
+            if key:
+                record[key] = value
+        if record:
+            records.append(record)
+    return records
+
+
+def parse_polygon_stream(data: bytes) -> tuple[AltiumPcbPolygon, ...]:
+    return tuple(
+        AltiumPcbPolygon.from_record(record) for record in _parse_text_records(data)
+    )
 
 
 @dataclass(frozen=True)
@@ -2453,8 +2647,9 @@ class PcbDocClassesData:
         for index, member in enumerate(record.members):
             raw[f"M{index}"] = member
 
-        if record.member_count or "MEMBERCOUNT" in raw or record.members:
-            raw["MEMBERCOUNT"] = str(record.member_count)
+        member_count = len(record.members) if record.members else record.member_count
+        if member_count or "MEMBERCOUNT" in raw or record.members:
+            raw["MEMBERCOUNT"] = str(member_count)
         else:
             raw.pop("MEMBERCOUNT", None)
 
@@ -3016,6 +3211,11 @@ class PcbDocBuilder:
             if self.profile.nets_data is not None
             else parse_net_stream(self.profile.raw_streams["Nets6/Data"])
         )
+        self.differential_pairs = list(
+            parse_differential_pair_stream(
+                self.profile.raw_streams.get("DifferentialPairs6/Data", b"")
+            )
+        )
         self.components = list(
             parse_component_stream(
                 self.profile.raw_streams.get("Components6/Data", b"")
@@ -3081,8 +3281,16 @@ class PcbDocBuilder:
                 self.profile.raw_streams.get("ShapeBasedRegions6/Data", b"")
             )
         )
+        self.polygons = list(
+            parse_polygon_stream(self.profile.raw_streams.get("Polygons6/Data", b""))
+        )
         self.vias = list(
             parse_via_stream(self.profile.raw_streams.get("Vias6/Data", b""))
+        )
+        self.extended_primitive_information = list(
+            parse_extended_primitive_information_stream(
+                self.profile.raw_streams.get("ExtendedPrimitiveInformation/Data", b"")
+            )
         )
         self.via_structures: list[AltiumPcbViaStructure] = []
         self.via_structure_links: list[AltiumPcbViaStructureLink] = []
@@ -3133,12 +3341,17 @@ class PcbDocBuilder:
         self._components_dirty = False
         self._component_parameters_dirty = False
         self._fills_dirty = False
+        self._differential_pairs_dirty = False
         self._models_dirty = False
         self._pads_dirty = False
         self._component_bodies_dirty = False
         self._regions_dirty = False
+        self._polygons_dirty = False
         self._texts_dirty = False
         self._vias_dirty = False
+        self._extended_primitive_information_dirty = False
+        self._embedded_font_records: list[bytes] = []
+        self._embedded_fonts_dirty = False
         self._authored_primitive_guids: list[tuple[PcbGuidType, uuid.UUID]] = []
         self._authored_pad_unique_ids: list[str] = []
 
@@ -3190,6 +3403,14 @@ class PcbDocBuilder:
 
     def remove_stream(self, stream_name: str) -> "PcbDocBuilder":
         self._streams.pop(self._normalize_stream_name(stream_name), None)
+        return self
+
+    def add_extended_primitive_information(
+        self,
+        item: AltiumPcbExtendedPrimitiveInformation,
+    ) -> "PcbDocBuilder":
+        self.extended_primitive_information.append(item)
+        self._extended_primitive_information_dirty = True
         return self
 
     def set_stream_same_size(
@@ -3290,7 +3511,7 @@ class PcbDocBuilder:
         """
         self.board_data = self.board_data.with_outline(outline)
         self.board_regions_data = self.board_regions_data.with_outline_vertices(
-            outline.points_mils
+            _outline_points_for_board_region(outline)
         )
         return self
 
@@ -3456,6 +3677,58 @@ class PcbDocBuilder:
             self._nets_dirty = True
         return self
 
+    def _find_differential_pair_index(self, name: str) -> int | None:
+        normalized = name.strip().upper()
+        for index, pair in enumerate(self.differential_pairs):
+            if pair.name.strip().upper() == normalized:
+                return index
+        return None
+
+    def add_differential_pair(
+        self,
+        *,
+        name: str,
+        positive_net_name: str,
+        negative_net_name: str,
+        gather_control: bool = False,
+        create_missing_nets: bool = True,
+    ) -> "PcbDocBuilder":
+        """
+        Add or update one `DifferentialPairs6/Data` pair object.
+        """
+        pair = AltiumPcbDifferentialPair.create(
+            name=name,
+            positive_net_name=positive_net_name,
+            negative_net_name=negative_net_name,
+            gather_control=gather_control,
+        )
+        if create_missing_nets:
+            self.add_net(pair.positive_net_name)
+            self.add_net(pair.negative_net_name)
+        elif self._find_net_index(pair.positive_net_name) is None:
+            raise ValueError(f"Unknown positive net: {pair.positive_net_name}")
+        elif self._find_net_index(pair.negative_net_name) is None:
+            raise ValueError(f"Unknown negative net: {pair.negative_net_name}")
+
+        existing_index = self._find_differential_pair_index(pair.name)
+        if existing_index is None:
+            self.differential_pairs.append(pair)
+        else:
+            existing = self.differential_pairs[existing_index]
+            pair._raw_record = dict(getattr(existing, "_raw_record", {}) or {})
+            pair.layer = existing.layer
+            pair.selected = existing.selected
+            pair.locked = existing.locked
+            pair.polygon_outline = existing.polygon_outline
+            pair.user_routed = existing.user_routed
+            pair.keepout = existing.keepout
+            pair.union_index = existing.union_index
+            if existing.unique_id:
+                pair.unique_id = existing.unique_id
+            self.differential_pairs[existing_index] = pair
+        self._differential_pairs_dirty = True
+        return self
+
     def add_component(
         self,
         *,
@@ -3467,11 +3740,24 @@ class PcbDocBuilder:
         source_footprint_library: str = "",
         name_on: bool = True,
         comment_on: bool = False,
-        name_auto_position: int = 1,
-        comment_auto_position: int = 3,
+        name_auto_position: PcbTextAutoposition | None = None,
+        comment_auto_position: PcbTextAutoposition | None = None,
         description: str = "",
         parameters: dict[str, str] | None = None,
         unique_id: str | None = None,
+        channel_offset: int | None = None,
+        source_designator: str | None = None,
+        source_unique_id: str = "",
+        source_hierarchical_path: str = "",
+        source_component_library: str = "",
+        source_component_library_identifier_kind: PcbLibIdentifierKind | None = None,
+        source_component_library_identifier: str = "",
+        source_lib_reference: str = "",
+        footprint_description: str = "",
+        lock_strings: bool | None = None,
+        enable_pin_swapping: bool | None = None,
+        enable_part_swapping: bool | None = None,
+        jumpers_visible: bool | None = True,
     ) -> int:
         component = build_authored_component(
             designator=designator,
@@ -3486,6 +3772,19 @@ class PcbDocBuilder:
             comment_auto_position=comment_auto_position,
             description=description,
             unique_id=unique_id,
+            channel_offset=channel_offset,
+            source_designator=source_designator,
+            source_unique_id=source_unique_id,
+            source_hierarchical_path=source_hierarchical_path,
+            source_component_library=source_component_library,
+            source_component_library_identifier_kind=source_component_library_identifier_kind,
+            source_component_library_identifier=source_component_library_identifier,
+            source_lib_reference=source_lib_reference,
+            footprint_description=footprint_description,
+            lock_strings=lock_strings,
+            enable_pin_swapping=enable_pin_swapping,
+            enable_part_swapping=enable_part_swapping,
+            jumpers_visible=jumpers_visible,
         )
         if parameters:
             component.parameters = {
@@ -3580,12 +3879,16 @@ class PcbDocBuilder:
         layer: int | str = "Top Layer",
         net: str | None = None,
         component_index: int | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion_mils: float | None = None,
     ) -> "PcbDocBuilder":
         track = build_authored_track(
             start_mils=start_mils,
             end_mils=end_mils,
             width_mils=width_mils,
             layer=layer,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
         )
         track.component_index = self._normalize_component_index(component_index)
         if net:
@@ -3616,6 +3919,8 @@ class PcbDocBuilder:
         layer: int | str = "Top Layer",
         net: str | None = None,
         component_index: int | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion_mils: float | None = None,
     ) -> "PcbDocBuilder":
         arc = build_authored_arc(
             center_mils=center_mils,
@@ -3624,6 +3929,8 @@ class PcbDocBuilder:
             end_angle=end_angle,
             width_mils=width_mils,
             layer=layer,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
         )
         arc.component_index = self._normalize_component_index(component_index)
         if net:
@@ -3652,12 +3959,16 @@ class PcbDocBuilder:
         layer: int | str = "Top Layer",
         net: str | None = None,
         component_index: int | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion_mils: float | None = None,
     ) -> "PcbDocBuilder":
         fill = build_authored_fill(
             pos1_mils=pos1_mils,
             pos2_mils=pos2_mils,
             rotation_degrees=rotation_degrees,
             layer=layer,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
         )
         fill.component_index = self._normalize_component_index(component_index)
         if net:
@@ -3894,10 +4205,15 @@ class PcbDocBuilder:
         outline_points_mils: list[tuple[float, float]],
         layer: int | PcbLayer = PcbLayer.TOP,
         hole_points_mils: list[list[tuple[float, float]]] | None = None,
+        outline_vertices: Sequence[object] | None = None,
         is_keepout: bool = False,
         keepout_restrictions: int = 0,
         net: str | None = None,
         component_index: int | None = None,
+        polygon_index: int | None = None,
+        subpoly_index: int = -1,
+        union_index: int = 0,
+        region_kind: int | PcbRegionKind = PcbRegionKind.COPPER,
     ) -> "PcbDocBuilder":
         net_index: int | None = None
         if net:
@@ -3907,7 +4223,12 @@ class PcbDocBuilder:
             outline_points_mils=outline_points_mils,
             layer=layer,
             hole_points_mils=hole_points_mils,
+            outline_vertices=outline_vertices,
             net_index=net_index,
+            polygon_index=0xFFFF if polygon_index is None else int(polygon_index),
+            subpoly_index=int(subpoly_index),
+            union_index=int(union_index),
+            region_kind=region_kind,
             is_keepout=is_keepout,
             keepout_restrictions=keepout_restrictions,
         )
@@ -3940,6 +4261,82 @@ class PcbDocBuilder:
             ),
         )
         return self
+
+    def add_polygon(
+        self,
+        *,
+        outline_vertices: list[PcbPolygonVertex],
+        layer: int | str | PcbLayer = PcbLayer.TOP,
+        cutout_vertices: list[list[PcbPolygonVertex]] | None = None,
+        net: str | None = None,
+        name: str = "",
+        polygon_type: str = "Polygon",
+        track_width_mils: float = 10.0,
+        hatch_style: str = "Solid",
+        arc_resolution_mils: float = 0.5,
+        remove_dead: bool = True,
+        remove_necks: bool = True,
+        area_threshold: float = 250000000000.0,
+        pour_over_style: int | None = None,
+        pour_index: int = 0,
+        union_index: int = 0,
+        raw_record: dict[str, object] | None = None,
+    ) -> "PcbDocBuilder":
+        """
+        Add an editable Altium polygon-pour definition.
+        """
+        if len(outline_vertices) < 3:
+            raise ValueError("Polygon outline requires at least 3 vertices")
+
+        polygon = (
+            AltiumPcbPolygon.from_record({str(key): str(value) for key, value in raw_record.items()})
+            if raw_record
+            else AltiumPcbPolygon()
+        )
+        polygon.outline = list(outline_vertices)
+        polygon.cutouts = [list(cutout) for cutout in (cutout_vertices or [])]
+        polygon.layer = self._normalize_polygon_layer(layer)
+        polygon.name = str(name or "")
+        polygon.polygon_type = str(polygon_type or "Polygon")
+        polygon.track_width_mils = float(track_width_mils)
+        polygon.hatch_style = str(hatch_style or "Solid")
+        polygon.arc_resolution_mils = float(arc_resolution_mils)
+        polygon.remove_dead = bool(remove_dead)
+        polygon.remove_necks = bool(remove_necks)
+        polygon.area_threshold = float(area_threshold)
+        if pour_over_style is not None:
+            polygon.pour_over_style = int(pour_over_style)
+        polygon.pour_index = int(pour_index)
+        polygon.union_index = int(union_index)
+        if net:
+            self.add_net(net, preferred_width_mils=track_width_mils)
+            polygon.net = self._find_net_index(net)
+        self.polygons.append(polygon)
+        self._polygons_dirty = True
+        return self
+
+    @staticmethod
+    def _normalize_polygon_layer(layer: int | str | PcbLayer) -> str:
+        if isinstance(layer, PcbLayer):
+            return layer.to_json_name()
+        if isinstance(layer, int):
+            return PcbLayer(layer).to_json_name()
+        token = str(layer or "").strip()
+        if not token:
+            return PcbLayer.TOP.to_json_name()
+        upper = token.replace(" ", "").upper()
+        aliases = {
+            "TOPLAYER": "TOP",
+            "BOTTOMLAYER": "BOTTOM",
+            "TOP": "TOP",
+            "BOTTOM": "BOTTOM",
+        }
+        if upper in aliases:
+            return aliases[upper]
+        try:
+            return PcbLayer(int(token)).to_json_name()
+        except (TypeError, ValueError):
+            return upper
 
     def add_embedded_model(
         self,
@@ -4002,6 +4399,36 @@ class PcbDocBuilder:
         self.models = list(existing_by_id.values())
         self._models_dirty = True
         return model
+
+    def add_embedded_font(
+        self,
+        *,
+        name: str,
+        font_data: bytes,
+        style: str = "",
+        data_is_compressed: bool = False,
+    ) -> "PcbDocBuilder":
+        compressed_data = (
+            bytes(font_data) if data_is_compressed else zlib.compress(bytes(font_data))
+        )
+        self._embedded_font_records.append(
+            _build_embedded_font_record(
+                name=str(name or "EmbeddedFont"),
+                style=str(style or ""),
+                compressed_data=compressed_data,
+            )
+        )
+        self._embedded_fonts_dirty = True
+        return self
+
+    def add_embedded_font_record(self, raw_record: bytes) -> "PcbDocBuilder":
+        """Append one native ``EmbeddedFonts6/Data`` record."""
+        record = bytes(raw_record)
+        if not record:
+            return self
+        self._embedded_font_records.append(record)
+        self._embedded_fonts_dirty = True
+        return self
 
     def add_component_body(
         self,
@@ -4243,6 +4670,27 @@ class PcbDocBuilder:
         )
         streams["UniqueIDPrimitiveInformation/Header"] = uniqueid_header
         streams["UniqueIDPrimitiveInformation/Data"] = uniqueid_data
+        if (
+            self._extended_primitive_information_dirty
+            or self.extended_primitive_information
+        ):
+            streams["ExtendedPrimitiveInformation/Header"] = struct.pack(
+                "<I",
+                len(self.extended_primitive_information),
+            )
+            streams["ExtendedPrimitiveInformation/Data"] = b"".join(
+                item.serialize_record()
+                for item in self.extended_primitive_information
+            )
+        else:
+            streams["ExtendedPrimitiveInformation/Header"] = self._streams.get(
+                "ExtendedPrimitiveInformation/Header",
+                _ZERO_HEADER,
+            )
+            streams["ExtendedPrimitiveInformation/Data"] = self._streams.get(
+                "ExtendedPrimitiveInformation/Data",
+                b"",
+            )
         streams["Texts/Header"] = self.texts_data.build_header()
         streams["Texts/Data"] = self.texts_data.build_stream()
         streams["Design Rule Checker Options6/Header"] = b"\x01\x00\x00\x00"
@@ -4272,6 +4720,22 @@ class PcbDocBuilder:
                 "Components6/Header", struct.pack("<I", len(self.components))
             )
             streams["Components6/Data"] = self._streams.get("Components6/Data", b"")
+        if self._differential_pairs_dirty:
+            streams["DifferentialPairs6/Header"] = struct.pack(
+                "<I", len(self.differential_pairs)
+            )
+            streams["DifferentialPairs6/Data"] = build_differential_pair_stream(
+                self.differential_pairs
+            )
+        else:
+            streams["DifferentialPairs6/Header"] = self._streams.get(
+                "DifferentialPairs6/Header",
+                struct.pack("<I", len(self.differential_pairs)),
+            )
+            streams["DifferentialPairs6/Data"] = self._streams.get(
+                "DifferentialPairs6/Data",
+                build_differential_pair_stream(self.differential_pairs),
+            )
         if self._component_parameters_dirty:
             params_header, params_data = build_component_parameter_stream(
                 self.components
@@ -4355,6 +4819,16 @@ class PcbDocBuilder:
             streams["ShapeBasedRegions6/Data"] = self._streams.get(
                 "ShapeBasedRegions6/Data", b""
             )
+        if self._polygons_dirty:
+            streams["Polygons6/Header"] = struct.pack("<I", len(self.polygons))
+            streams["Polygons6/Data"] = create_stream_from_records(
+                [polygon.to_record() for polygon in self.polygons]
+            )
+        else:
+            streams["Polygons6/Header"] = self._streams.get(
+                "Polygons6/Header", struct.pack("<I", len(self.polygons))
+            )
+            streams["Polygons6/Data"] = self._streams.get("Polygons6/Data", b"")
         if self._component_bodies_dirty:
             streams["ComponentBodies6/Header"] = struct.pack(
                 "<I", len(self.component_bodies)
@@ -4386,6 +4860,11 @@ class PcbDocBuilder:
         streams["Arcs6/Data"] = build_arc_stream(self.arcs)
         streams["Tracks6/Header"] = struct.pack("<I", len(self.tracks))
         streams["Tracks6/Data"] = build_track_stream(self.tracks)
+        if self._embedded_fonts_dirty:
+            streams["EmbeddedFonts6/Header"] = struct.pack(
+                "<I", len(self._embedded_font_records)
+            )
+            streams["EmbeddedFonts6/Data"] = b"".join(self._embedded_font_records)
         self._apply_via_structure_streams(streams)
         return streams
 

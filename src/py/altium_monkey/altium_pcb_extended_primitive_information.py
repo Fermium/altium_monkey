@@ -137,3 +137,39 @@ def parse_extended_primitive_information_stream(
         pos += record_len
         out.append(AltiumPcbExtendedPrimitiveInformation.from_payload(payload))
     return out
+
+
+def build_mask_expansion_extended_primitive_information(
+    *,
+    primitive_index: int,
+    primitive_object_id: str,
+    solder_mask_expansion_mils: float | None = None,
+    paste_mask_expansion_mils: float | None = None,
+) -> AltiumPcbExtendedPrimitiveInformation:
+    """
+    Build an ExtendedPrimitiveInformation mask-expansion record.
+
+    Altium stores some primitive-level mask/paste overrides outside the primary
+    binary primitive stream. The primitive index is source-type local and paired
+    with ``primitive_object_id`` such as ``Track``, ``Arc``, ``Fill``,
+    ``Region``, or ``Polygon``.
+    """
+    item = AltiumPcbExtendedPrimitiveInformation()
+    item.primitive_index = int(primitive_index)
+    item.primitive_object_id = str(primitive_object_id)
+    item.info_type = "Mask"
+    if solder_mask_expansion_mils is not None:
+        item.solder_mask_expansion_mode = "Manual"
+        item.solder_mask_expansion_manual_token = (
+            f"{float(solder_mask_expansion_mils):.4f}mil"
+        )
+    if paste_mask_expansion_mils is not None:
+        item.paste_mask_expansion_mode = "Manual"
+        item.paste_mask_expansion_manual_token = (
+            f"{float(paste_mask_expansion_mils):.4f}mil"
+        )
+    item._sync_typed_fields_to_properties()
+    item._typed_signature_at_parse = item._typed_signature()
+    item._properties_raw_signature = item._properties_signature()
+    item.raw_record_payload = None
+    return item

@@ -14,6 +14,7 @@ from .altium_pcb_enums import (
     PcbViaStructureFeatureSide,
     PcbViaStructureFeatureType,
 )
+from .altium_pcb_drill_rendering import should_render_via_drill_hole
 from .altium_pcb_mask_paste_rules import get_via_mask_expansion_iu
 from .altium_pcb_hole_tolerance import (
     PCB_HOLE_TOLERANCE_UNSET,
@@ -1682,7 +1683,12 @@ class AltiumPcbVia(PcbGraphicalObject):
             f'r="{ctx.fmt(outer_radius_mm)}" fill="{html.escape(color)}" {" ".join(ring_attrs)}/>'
         ]
 
-        if render_holes and for_layer.is_copper() and hole_radius_mm > 0:
+        if (
+            render_holes
+            and for_layer.is_copper()
+            and hole_radius_mm > 0
+            and should_render_via_drill_hole(self)
+        ):
             hole_attrs: list[str] = []
             if include_metadata:
                 hole_attrs.extend(

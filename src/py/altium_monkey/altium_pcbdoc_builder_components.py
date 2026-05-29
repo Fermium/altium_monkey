@@ -18,11 +18,13 @@ from __future__ import annotations
 import struct
 import uuid
 from collections import OrderedDict
+from enum import IntEnum
 from typing import Sequence
 
 from .altium_component_kind import parse_component_kind
 from .altium_pcb_stream_helpers import format_mil_value as _format_mil_value
 from .altium_pcb_component import AltiumPcbComponent
+from .altium_pcb_enums import PcbLibIdentifierKind, PcbTextAutoposition
 from .altium_record_types import PcbLayer
 from .altium_utilities import (
     create_stream_from_records,
@@ -54,6 +56,36 @@ def _normalize_component_layer(layer: str | PcbLayer | int) -> str:
     if "TOP" in text:
         return "TOP"
     raise ValueError(f"Unsupported component layer: {layer!r}")
+
+
+def _coerce_optional_enum(
+    value: object | None, enum_type: type[IntEnum], field_name: str
+) -> IntEnum | None:
+    if value is None:
+        return None
+    try:
+        return enum_type(value)
+    except (TypeError, ValueError) as exc:
+        valid_values = ", ".join(str(int(member)) for member in enum_type)
+        raise ValueError(
+            f"{field_name} must be a {enum_type.__name__} value "
+            f"({valid_values}), got {value!r}"
+        ) from exc
+
+
+def _add_optional_text(
+    raw_record: OrderedDict[str, str], key: str, value: object
+) -> None:
+    text = "" if value is None else str(value)
+    if text:
+        raw_record[key] = text
+
+
+def _add_optional_bool(
+    raw_record: OrderedDict[str, str], key: str, value: bool | None
+) -> None:
+    if value is not None:
+        raw_record[key] = "TRUE" if value else "FALSE"
 
 
 def _deterministic_component_unique_id(
@@ -131,15 +163,39 @@ def build_authored_component(
     source_footprint_library: str = "",
     name_on: bool = True,
     comment_on: bool = False,
-    name_auto_position: int = 1,
-    comment_auto_position: int = 3,
+    name_auto_position: PcbTextAutoposition | None = None,
+    comment_auto_position: PcbTextAutoposition | None = None,
     description: str = "",
     unique_id: str | None = None,
+    channel_offset: int | None = None,
+    source_designator: str | None = None,
+    source_unique_id: str = "",
+    source_hierarchical_path: str = "",
+    source_component_library: str = "",
+    source_component_library_identifier_kind: PcbLibIdentifierKind | None = None,
+    source_component_library_identifier: str = "",
+    source_lib_reference: str = "",
+    footprint_description: str = "",
+    lock_strings: bool | None = None,
+    enable_pin_swapping: bool | None = None,
+    enable_part_swapping: bool | None = None,
+    jumpers_visible: bool | None = True,
 ) -> AltiumPcbComponent:
     """
     Create the smallest useful authored component record.
     """
     layer_token = _normalize_component_layer(layer)
+    name_auto_position_value = _coerce_optional_enum(
+        name_auto_position, PcbTextAutoposition, "name_auto_position"
+    )
+    comment_auto_position_value = _coerce_optional_enum(
+        comment_auto_position, PcbTextAutoposition, "comment_auto_position"
+    )
+    source_component_library_identifier_kind_value = _coerce_optional_enum(
+        source_component_library_identifier_kind,
+        PcbLibIdentifierKind,
+        "source_component_library_identifier_kind",
+    )
     x_mils, y_mils = position_mils
     unique_id = unique_id or _deterministic_component_unique_id(
         designator=designator,
@@ -166,17 +222,39 @@ def build_authored_component(
             ("GROUPNUM", "0"),
             ("COUNT", "0"),
             ("ROTATION", _format_legacy_scientific(rotation_degrees)),
-            ("NAMEAUTOPOSITION", str(int(name_auto_position))),
-            ("COMMENTAUTOPOSITION", str(int(comment_auto_position))),
             ("UNIONINDEX", "0"),
             ("SOURCEFOOTPRINTLIBRARY", source_footprint_library),
             ("UNIQUEID", unique_id),
-            ("JUMPERSVISIBLE", "TRUE"),
         )
     )
+    if name_auto_position_value is not None:
+        raw_record["NAMEAUTOPOSITION"] = str(int(name_auto_position_value))
+    if comment_auto_position_value is not None:
+        raw_record["COMMENTAUTOPOSITION"] = str(int(comment_auto_position_value))
+    if channel_offset is not None:
+        raw_record["CHANNELOFFSET"] = str(int(channel_offset))
+    source_designator = designator if source_designator is None else source_designator
+    _add_optional_text(raw_record, "SOURCEDESIGNATOR", source_designator)
+    _add_optional_text(raw_record, "SOURCEUNIQUEID", source_unique_id)
+    _add_optional_text(raw_record, "SOURCEHIERARCHICALPATH", source_hierarchical_path)
+    _add_optional_text(raw_record, "SOURCECOMPONENTLIBRARY", source_component_library)
+    if source_component_library_identifier_kind_value is not None:
+        raw_record["SOURCECOMPLIBIDENTIFIERKIND"] = str(
+            int(source_component_library_identifier_kind_value)
+        )
+    _add_optional_text(
+        raw_record,
+        "SOURCECOMPLIBRARYIDENTIFIER",
+        source_component_library_identifier,
+    )
+    _add_optional_text(raw_record, "SOURCELIBREFERENCE", source_lib_reference)
     if description:
         raw_record["SOURCEDESCRIPTION"] = description
-    raw_record["SOURCEDESIGNATOR"] = designator
+    _add_optional_text(raw_record, "FOOTPRINTDESCRIPTION", footprint_description)
+    _add_optional_bool(raw_record, "LOCKSTRINGS", lock_strings)
+    _add_optional_bool(raw_record, "ENABLEPINSWAPPING", enable_pin_swapping)
+    _add_optional_bool(raw_record, "ENABLEPARTSWAPPING", enable_part_swapping)
+    _add_optional_bool(raw_record, "JUMPERSVISIBLE", jumpers_visible)
 
     return AltiumPcbComponent(
         designator=designator,

@@ -365,11 +365,12 @@ class PcbLayer(IntEnum):
 
     def to_display_name(self) -> str:
         """
-        Return a human-readable display name (e.g. "Top Layer", "Top Overlay").
-        """
-        from .altium_resolved_layer_stack import _LEGACY_TO_DISPLAY
+        Return Altium's default human-facing label for this layer enum.
 
-        return _LEGACY_TO_DISPLAY.get(self.value, f"Unknown ({self.value})")
+        This is not board-stack-aware. For parsed PcbDoc files, use
+        ResolvedLayerStack when user-renamed board layers must be preserved.
+        """
+        return _LAYER_TO_DISPLAY_NAME.get(self, f"Unknown ({self.value})")
 
     @classmethod
     def from_json_name(cls, name: str) -> "PcbLayer":
@@ -491,6 +492,28 @@ for _i in range(1, 17):
 
 # Reverse lookup
 _JSON_TO_LAYER: dict[str, PcbLayer] = {v: k for k, v in _LAYER_TO_JSON.items()}
+
+_LAYER_TO_DISPLAY_NAME: dict[PcbLayer, str] = {
+    PcbLayer.TOP: "Top Layer",
+    PcbLayer.BOTTOM: "Bottom Layer",
+    PcbLayer.TOP_OVERLAY: "Top Overlay",
+    PcbLayer.BOTTOM_OVERLAY: "Bottom Overlay",
+    PcbLayer.TOP_PASTE: "Top Paste",
+    PcbLayer.BOTTOM_PASTE: "Bottom Paste",
+    PcbLayer.TOP_SOLDER: "Top Solder",
+    PcbLayer.BOTTOM_SOLDER: "Bottom Solder",
+    PcbLayer.DRILL_GUIDE: "Drill Guide",
+    PcbLayer.KEEPOUT: "Keep-Out Layer",
+    PcbLayer.DRILL_DRAWING: "Drill Drawing",
+    PcbLayer.MULTI_LAYER: "Multi-Layer",
+    PcbLayer.CONNECT: "Connections",
+}
+for _i in range(1, 31):
+    _LAYER_TO_DISPLAY_NAME[PcbLayer(1 + _i)] = f"Mid-Layer {_i}"
+for _i in range(1, 17):
+    _LAYER_TO_DISPLAY_NAME[PcbLayer(38 + _i)] = f"Internal Plane {_i}"
+for _i in range(1, 17):
+    _LAYER_TO_DISPLAY_NAME[PcbLayer(56 + _i)] = f"Mechanical {_i}"
 
 # Default Altium layer colors (approximate Altium Designer defaults)
 _LAYER_DEFAULT_COLORS: dict[PcbLayer, str] = {

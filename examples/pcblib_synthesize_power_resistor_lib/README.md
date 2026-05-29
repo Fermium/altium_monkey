@@ -12,20 +12,24 @@ The default run generates a small subset so the example check stays fast. Use `-
 
 ## Run
 
+This example requires CadQuery because it synthesizes STEP geometry. The core
+`altium-monkey` package uses `wn-geometer` for STEP bounds, but does not require
+CadQuery unless you run this synthesis example.
+
 ```powershell
-uv run python examples\pcblib_synthesize_power_resistor_lib\pcblib_synthesize_power_resistor_lib.py
+uv run --extra examples python examples\pcblib_synthesize_power_resistor_lib\pcblib_synthesize_power_resistor_lib.py
 ```
 
 Generate all built-in SQP20 values:
 
 ```powershell
-uv run python examples\pcblib_synthesize_power_resistor_lib\pcblib_synthesize_power_resistor_lib.py --all
+uv run --extra examples python examples\pcblib_synthesize_power_resistor_lib\pcblib_synthesize_power_resistor_lib.py --all
 ```
 
 Generate one explicit value:
 
 ```powershell
-uv run python examples\pcblib_synthesize_power_resistor_lib\pcblib_synthesize_power_resistor_lib.py --part SQP20AJB-10R
+uv run --extra examples python examples\pcblib_synthesize_power_resistor_lib\pcblib_synthesize_power_resistor_lib.py --part SQP20AJB-10R
 ```
 
 ## Outputs
@@ -39,4 +43,4 @@ synthesized STEP bytes and writes it consistently to `Library/Models/Data` and
 `Library/ComponentBodies6/Data`. This generated-footprint example supplies the
 known model projection bounds and height from the package dimensions. If those
 values are omitted, `add_embedded_3d_model(...)` can infer rectangular STEP
-bounds through the core OCCT-backed geometry helper.
+bounds through `wn-geometer`.

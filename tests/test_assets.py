@@ -98,15 +98,22 @@ def test_public_lockfile_matches_release_dependency_shape() -> None:
     dependency_names = {
         dependency["name"] for dependency in altium_package.get("dependencies", [])
     }
-    assert {"cadquery", "freetype-py", "numpy", "pillow", "uharfbuzz"}.issubset(
-        dependency_names
-    )
+    assert {
+        "freetype-py",
+        "lxml",
+        "lz4",
+        "pillow",
+        "uharfbuzz",
+        "wn-geometer",
+    }.issubset(dependency_names)
+    assert "cadquery" not in dependency_names
 
     optional_dependency_names = {
         dependency["name"]
         for dependencies in altium_package.get("optional-dependencies", {}).values()
         for dependency in dependencies
     }
+    assert "cadquery" in optional_dependency_names
     assert "mkdocs" not in optional_dependency_names
 
 
@@ -144,11 +151,51 @@ def test_domain_docs_list_public_workflow_examples() -> None:
         "outjob_runner",
         "pcbdoc_bom",
         "pcbdoc_pick_n_place",
+        "pcbdoc_add_differential_pairs",
+        "pcbdoc_diff_pair_report",
         "intlib_extract_sources",
         "altium_monkey.design.a1",
         "altium_monkey.netlist.a0",
     ):
         assert token in docs_text
+
+
+def test_format_contract_docs_are_published() -> None:
+    contracts_root = PUBLIC_ROOT / "docs" / "format_contracts"
+    expected_docs = {
+        "index.md",
+        "schdoc.md",
+        "schlib.md",
+        "pcbdoc.md",
+        "pcblib.md",
+        "prjpcb.md",
+        "altium_design.md",
+        "intlib.md",
+        "svg.md",
+        "draftsman.md",
+    }
+
+    assert expected_docs == {
+        path.name for path in contracts_root.glob("*.md") if path.is_file()
+    }
+
+    index_text = (contracts_root / "index.md").read_text(encoding="utf-8")
+    public_docs_index = (PUBLIC_ROOT / "docs" / "index.md").read_text(encoding="utf-8")
+    public_readme = (PUBLIC_ROOT / "README.md").read_text(encoding="utf-8")
+    svg_contract = (contracts_root / "svg.md").read_text(encoding="utf-8")
+    pcbdoc_contract = (contracts_root / "pcbdoc.md").read_text(encoding="utf-8")
+
+    assert "Format Contracts" in index_text
+    assert "format_contracts/index.md" in public_docs_index
+    assert "docs/format_contracts/index.md" in public_readme
+    assert "include_view_box=False" in svg_contract
+    assert "components[].svg_id" in svg_contract
+    assert "nets[].graphical" in svg_contract
+    assert "data-doc-id" in svg_contract
+    assert "data-element-key" in svg_contract
+    assert "altium_monkey.pcb.svg.enrichment.a0" in svg_contract
+    assert "data-layer-display-name" in svg_contract
+    assert "IPC-4761" in pcbdoc_contract
 
 
 def test_generated_docs_are_current() -> None:
@@ -298,6 +345,249 @@ def test_asset_example_runs_and_writes_declared_outputs(
         assert output_path.exists(), (
             f"{example['id']} missing declared output: {output}"
         )
+
+
+def test_draftsman_blank_project_example_writes_parseable_drawing(
+    check_examples_root: Path,
+) -> None:
+    example = next(
+        item
+        for item in _load_examples()
+        if item["id"] == "draftsman_create_blank_project"
+    )
+    result = _run_example_entrypoint(example, check_examples_root)
+    assert result.returncode == 0, result.stderr
+
+    from altium_monkey import AltiumDraftsmanDocument
+    from altium_monkey.altium_prjpcb import AltiumPrjPcb
+
+    output_root = (
+        check_examples_root
+        / "draftsman_create_blank_project"
+        / "output"
+        / "RT_SUPER_C1_BLANK_DRAFTSMAN"
+    )
+    draftsman_path = output_root / "RT_SUPER_C1_Blank.PCBDwf"
+    summary_path = (
+        check_examples_root
+        / "draftsman_create_blank_project"
+        / "output"
+        / "draftsman_create_blank_project.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    document = AltiumDraftsmanDocument.from_file(draftsman_path)
+    prjpcb = AltiumPrjPcb(output_root / "RT_SUPER_C1.PrjPcb")
+    project_documents = [str(document["path"]) for document in prjpcb.documents]
+
+    assert (output_root / "RT_SUPER_C1.PCBdoc").exists()
+    assert summary["source_document_name"] == "RT_SUPER_C1.PCBdoc"
+    assert document.source_document_name == "RT_SUPER_C1.PCBdoc"
+    assert document.format_version == 24
+    assert len(document.pages) == 1
+    assert len(document.items) == 0
+    assert summary["is_blank_drawing"] is True
+    assert summary["item_count"] == 0
+    assert summary["note_count"] == 0
+    assert summary["text_count"] == 0
+    assert summary["picture_count"] == 0
+    assert "RT_SUPER_C1_Blank.PCBDwf" in summary["project_documents"]
+    assert "RT_SUPER_C1_Blank.PCBDwf" in project_documents
+
+
+def test_hello_draftsman_example_writes_project_and_upper_left_note(
+    check_examples_root: Path,
+) -> None:
+    example = next(item for item in _load_examples() if item["id"] == "hello_draftsman")
+    result = _run_example_entrypoint(example, check_examples_root)
+    assert result.returncode == 0, result.stderr
+
+    from altium_monkey import AltiumDraftsmanDocument, AltiumPcbDoc, AltiumSchDoc
+    from altium_monkey.altium_prjpcb import AltiumPrjPcb
+
+    project_root = check_examples_root / "hello_draftsman" / "output"
+    project_path = project_root / "HELLO-DRAFTSMAN.PrjPcb"
+    schdoc_path = project_root / "HELLO-DRAFTSMAN.SchDoc"
+    pcbdoc_path = project_root / "HELLO-DRAFTSMAN.PcbDoc"
+    draftsman_path = project_root / "HELLO-DRAFTSMAN.PCBDwf"
+
+    for path in (project_path, schdoc_path, pcbdoc_path, draftsman_path):
+        assert path.exists(), path
+
+    project = AltiumPrjPcb(project_path)
+    document_names = {Path(doc["path"]).name for doc in project.documents}
+    assert {
+        "HELLO-DRAFTSMAN.SchDoc",
+        "HELLO-DRAFTSMAN.PcbDoc",
+        "HELLO-DRAFTSMAN.PCBDwf",
+    }.issubset(document_names)
+
+    AltiumSchDoc(schdoc_path)
+    pcbdoc = AltiumPcbDoc.from_file(pcbdoc_path)
+    assert pcbdoc.board is not None
+    assert pcbdoc.board.outline is not None
+
+    document = AltiumDraftsmanDocument.from_file(draftsman_path)
+    assert document.source_document_name == "HELLO-DRAFTSMAN.PcbDoc"
+    assert len(document.notes) == 1
+    assert len(document.pictures) == 1
+    page = document.pages[0]
+    assert page.size is not None
+    note = document.notes[0]
+    assert note.title == "altium monkey wuz here"
+    assert note.title_font_style is not None
+    assert note.title_font_style.family_name == "Comic Sans MS"
+    assert note.title_font_style.size == pytest.approx(60.0)
+    assert note.title_font_style.bold is True
+    assert note.use_document_font_for_title is False
+    assert note.element_font_style is not None
+    assert note.element_font_style.family_name == "Comic Sans MS"
+    assert note.element_font_style.size == pytest.approx(14.0)
+    assert note.use_document_font_for_elements is False
+    assert note.start_point is not None
+    assert note.start_point.x_mm == pytest.approx(6.0)
+    assert note.start_point.y_mm == pytest.approx(page.size.height_mm - 31.0)
+    assert note.rect is not None
+    assert note.rect.x_mm == pytest.approx(6.0)
+    assert note.rect.y_mm == pytest.approx(page.size.height_mm - 31.0)
+    assert note.rect.width_mm == pytest.approx(250.0)
+    assert note.rect.height_mm == pytest.approx(0.0)
+
+    picture = document.pictures[0]
+    assert picture.maintain_aspect_ratio is True
+    assert (
+        picture.image_bytes
+        == (
+            check_examples_root / "hello_draftsman" / "assets" / "monkey.png"
+        ).read_bytes()
+    )
+    assert picture.rect is not None
+    assert picture.rect.x_mm == pytest.approx(3.0)
+    assert picture.rect.y_mm == pytest.approx(113.64583333333331)
+    assert picture.rect.width_mm == pytest.approx(115.85416666666663)
+    assert picture.rect.height_mm == pytest.approx(115.85416666666663)
+
+
+def test_draftsman_add_image_example_writes_text_and_picture(
+    check_examples_root: Path,
+) -> None:
+    example = next(
+        item for item in _load_examples() if item["id"] == "draftsman_add_image"
+    )
+    result = _run_example_entrypoint(example, check_examples_root)
+    assert result.returncode == 0, result.stderr
+
+    from altium_monkey import (
+        AltiumDraftsmanDocument,
+        DraftsmanHorizontalAlignment,
+        DraftsmanStandardSheetSize,
+        DraftsmanVerticalAlignment,
+    )
+
+    output_root = check_examples_root / "draftsman_add_image" / "output"
+    document = AltiumDraftsmanDocument.from_file(
+        output_root / "draftsman_add_image.PCBDwf"
+    )
+    summary = json.loads(
+        (output_root / "draftsman_add_image.json").read_text(encoding="utf-8")
+    )
+    asset_bytes = (
+        check_examples_root / "draftsman_add_image" / "assets" / "monkey.png"
+    ).read_bytes()
+
+    assert document.pages[0].standard_sheet_size is DraftsmanStandardSheetSize.A3
+    assert document.pages[0].margin is not None
+    assert document.pages[0].margin.left_mm == pytest.approx(1.5)
+    assert document.pages[0].margin.top_mm == pytest.approx(1.5)
+    assert document.pages[0].margin.right_mm == pytest.approx(1.5)
+    assert document.pages[0].margin.bottom_mm == pytest.approx(1.5)
+    assert document.document_options.font_style is not None
+    assert document.document_options.font_style.family_name == "Arial"
+    assert document.document_options.font_style.size == pytest.approx(8.0)
+    assert len(document.texts) == 1
+    assert len(document.pictures) == 1
+    assert summary["text_count"] == 1
+    assert summary["picture_count"] == 1
+    assert summary["border_zone_margin_mm"] == pytest.approx(1.5)
+
+    text = document.texts[0]
+    assert text.text == "altium-monkey wuz here"
+    assert text.fill_style_id == 0
+    assert text.use_document_font is False
+    assert text.font_style is not None
+    assert text.font_style.family_name == "Comic Sans MS"
+    assert text.font_style.size == pytest.approx(24.0)
+    assert text.font_style.bold is True
+    assert text.horizontal_alignment is DraftsmanHorizontalAlignment.CENTER
+    assert text.vertical_alignment is DraftsmanVerticalAlignment.CENTER
+
+    picture = document.pictures[0]
+    expected_image_height_mm = (
+        80.0
+        * summary["source_image_px"]["height"]
+        / summary["source_image_px"]["width"]
+    )
+    assert picture.maintain_aspect_ratio is True
+    assert picture.image_bytes == asset_bytes
+    assert picture.rect is not None
+    assert picture.rect.x_mm == pytest.approx((420.0 - 80.0) / 2.0)
+    assert picture.rect.y_mm == pytest.approx((297.0 - expected_image_height_mm) / 2.0)
+    assert picture.rect.width_mm == pytest.approx(80.0)
+    assert picture.rect.height_mm == pytest.approx(expected_image_height_mm)
+
+
+def test_draftsman_multipage_notes_example_writes_two_page_drawing(
+    check_examples_root: Path,
+) -> None:
+    example = next(
+        item for item in _load_examples() if item["id"] == "draftsman_multipage_notes"
+    )
+    result = _run_example_entrypoint(example, check_examples_root)
+    assert result.returncode == 0, result.stderr
+
+    from altium_monkey import AltiumDraftsmanDocument, DraftsmanStandardSheetSize
+    from altium_monkey.altium_prjpcb import AltiumPrjPcb
+
+    output_root = check_examples_root / "draftsman_multipage_notes" / "output"
+    draftsman_path = output_root / "draftsman_multipage_notes.PCBDwf"
+    summary_path = (
+        check_examples_root
+        / "draftsman_multipage_notes"
+        / "output"
+        / "draftsman_multipage_notes.json"
+    )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    document = AltiumDraftsmanDocument.from_file(draftsman_path)
+    project = AltiumPrjPcb(output_root / "draftsman_multipage_notes.PrjPcb")
+    project_documents = {str(document["path"]) for document in project.documents}
+
+    assert (output_root / "draftsman_multipage_notes.SchDoc").exists()
+    assert (output_root / "draftsman_multipage_notes.PcbDoc").exists()
+    assert document.source_document_name == "draftsman_multipage_notes.PcbDoc"
+    assert summary["source_document_name"] == "draftsman_multipage_notes.PcbDoc"
+    assert len(document.pages) == 2
+    assert len(document.notes) == 2
+    assert summary["page_ids"] == [page.id for page in document.pages]
+    assert summary["item_ids"] == [note.id for note in document.notes]
+    assert summary["note_titles"] == ["PAGE 1 NOTES", "PAGE 2 NOTES"]
+    assert summary["lookup_demo"]["page_by_id"] == summary["page_ids"][1]
+    assert summary["lookup_demo"]["note_by_id"] == "PAGE 2 NOTES"
+    assert summary["lookup_demo"]["page_note_by_title"] == summary["item_ids"][1]
+    assert {
+        "draftsman_multipage_notes.SchDoc",
+        "draftsman_multipage_notes.PcbDoc",
+        "draftsman_multipage_notes.PCBDwf",
+    }.issubset(project_documents)
+
+    page_2 = document.page_by_id(summary["page_ids"][1])
+    assert page_2 is not None
+    assert page_2.standard_sheet_size is DraftsmanStandardSheetSize.A3
+    page_2_note = page_2.note_by_title("page 2 notes")
+    assert page_2_note is not None
+    assert page_2_note.id == summary["item_ids"][1]
+    assert document.note_by_id(summary["item_ids"][0]).page.id == summary["page_ids"][0]
+    assert document.note_by_id(summary["item_ids"][1]).page.id == summary["page_ids"][1]
+    assert len(summary["notes"][0]["row_ids"]) == 1
+    assert len(summary["notes"][1]["row_ids"]) == 1
 
 
 def test_schdoc_apply_dynamic_template_inherits_template_sheet_context(
@@ -1495,6 +1785,65 @@ def test_pcbdoc_via_ipc4761_examples_write_expected_via_state(
         (mutation_root / "mutation_summary.json").read_text(encoding="utf-8")
     )
     assert mutation_summary["matched_via_count"] == len(matched_vias)
+
+
+def test_pcbdoc_differential_pair_examples_write_expected_state(
+    check_examples_root: Path,
+) -> None:
+    from altium_monkey import AltiumPcbDoc
+
+    for example_id in (
+        "pcbdoc_add_differential_pairs",
+        "pcbdoc_diff_pair_report",
+    ):
+        example = next(item for item in _load_examples() if item["id"] == example_id)
+        result = _run_example_entrypoint(example, check_examples_root)
+        assert result.returncode == 0, result.stderr
+
+    author_root = check_examples_root / "pcbdoc_add_differential_pairs" / "output"
+    author_doc = AltiumPcbDoc.from_file(
+        author_root / "pcbdoc_add_differential_pairs.PcbDoc"
+    )
+    pairs_by_name = {pair.name: pair for pair in author_doc.differential_pairs}
+    assert set(pairs_by_name) == {"USB_D", "CAM_D0", "LVDS_CLK"}
+    assert pairs_by_name["USB_D"].net_names == ("USB_D_P", "USB_D_N")
+    assert pairs_by_name["CAM_D0"].gather_control is True
+    assert {net.name for net in author_doc.nets} == {
+        "USB_D_P",
+        "USB_D_N",
+        "CAM_D0_P",
+        "CAM_D0_N",
+        "LVDS_CLK_P",
+        "LVDS_CLK_N",
+    }
+    assert len(author_doc.tracks) == 6
+    assert len(author_doc.vias) == 6
+
+    author_manifest = json.loads(
+        (author_root / "pcbdoc_add_differential_pairs.json").read_text(encoding="utf-8")
+    )
+    assert author_manifest["differential_pair_count"] == 3
+    assert author_manifest["source"] == (
+        "created from AltiumPcbDoc() without an input PcbDoc"
+    )
+
+    report_root = check_examples_root / "pcbdoc_diff_pair_report" / "output"
+    report = json.loads(
+        (report_root / "pcbdoc_diff_pair_report.json").read_text(encoding="utf-8")
+    )
+    assert report["project"] == "assets/projects/rt_super_c1/RT_SUPER_C1.PrjPcb"
+    assert report["differential_pair_count"] >= 1
+    report_pairs_by_name = {pair["name"]: pair for pair in report["pairs"]}
+    assert report_pairs_by_name["USB_D"]["positive_net_name"] == "USB_D_P"
+    assert report_pairs_by_name["USB_D"]["negative_net_name"] == "USB_D_N"
+    assert report["pair_by_net_name"]["USB_D_P"] == "USB_D"
+    assert report["pair_by_net_name"]["USB_D_N"] == "USB_D"
+
+    report_text = (report_root / "pcbdoc_diff_pair_report.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "Differential Pairs" in report_text
+    assert "USB_D" in report_text
 
 
 def test_pcbdoc_insert_nets_route_writes_routed_board(

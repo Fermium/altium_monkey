@@ -15,7 +15,15 @@ This example shows two related paths:
 2. Reading the design JSON `pnp` contract
 3. Calling `AltiumDesign.to_pnp(exclude_no_bom=True)` to skip components marked
    as no-BOM, including standard no-BOM components
-4. Preserving JSON placement data for downstream automation
+4. Reading the `position_mode` metadata that documents how `center_x` and
+   `center_y` were computed
+5. Preserving JSON placement data for downstream automation
+
+The default `position_mode` is `altium-pick-place`: center of the bounding box
+of component-owned pad anchor points, with component-origin fallback when a
+component has no owned pads. Direct callers can use
+`position_mode="component-origin"` when they want the footprint placement
+origin instead.
 
 ## Run
 
@@ -45,4 +53,5 @@ examples/pcbdoc_pick_n_place/output/pick_and_place_exclude_no_bom.json
 
 The standalone `pick_and_place.json` file is the same `pnp` object embedded in
 `altium_design.json`. The `pick_and_place_exclude_no_bom.json` file shows the
-direct `to_pnp(..., exclude_no_bom=True)` path.
+direct `to_pnp(..., exclude_no_bom=True, position_mode="altium-pick-place")`
+path.

@@ -71,7 +71,7 @@ class PcbKeyValueTextEntryMixin:
 
 def format_mil_value(value_mils: float) -> str:
     """Format a mil-valued float using Altium's compact text form."""
-    return f"{format(float(value_mils), 'g')}mil"
+    return f"{format(float(value_mils), '.12g')}mil"
 
 
 def format_bool_text(value: bool) -> str:
