@@ -1067,6 +1067,17 @@ class AltiumSchDoc(JsonApplyMixin):
             if isinstance(obj, AltiumSchComponent):
                 continue  # Skip components themselves
 
+            # Records flagged OwnerIndexAdditionalList carry an OwnerIndex that
+            # is relative to the Additional stream's own record list (harness
+            # connectors/entries/types live there), not the primary FileHeader
+            # list that component_by_index is keyed on. They are wired to their
+            # real parent in _build_harness_hierarchy; resolving them here would
+            # cross streams and mis-attach them to whatever FileHeader component
+            # happens to share that index — which then crashes rendering when a
+            # component tries to call a harness child's to_geometry(). Skip them.
+            if getattr(obj, "owner_index_additional_list", False):
+                continue
+
             # Get owner index from the object
             owner_index = None
             if isinstance(obj, dict):
