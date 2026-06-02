@@ -1327,6 +1327,56 @@ class AltiumSymbol:
             synced_count += 1
         return synced_count
 
+    def _rehydrate_objects_from_raw(
+        self,
+        indices: list[int],
+        font_manager: FontIDManager | None = None,
+    ) -> None:
+        """
+        Re-parse the OOP objects at the given raw-record indices.
+
+        ``apply_json()`` mutates ``raw_records`` directly, but the OOP objects
+        (rectangles, designators, pins, …) carry their own parsed state and are
+        re-serialized back over ``raw_records`` during save (see
+        :meth:`sync_graphics_to_raw_records` / :meth:`sync_pins_to_raw_records`).
+        Re-hydrating the touched objects from their freshly patched raw records
+        keeps the two views consistent so the edit survives the save round-trip.
+
+        The component header is stored as ``component_record`` (the same dict as
+        ``raw_records[0]``) plus derived metadata rather than a tracked OOP
+        object, so it is re-applied directly.
+        """
+        by_index: dict[int, Any] = {}
+        for obj in self.objects:
+            ri = getattr(obj, "_record_index", None)
+            if isinstance(ri, int):
+                by_index[ri] = obj
+
+        for idx in sorted(set(indices)):
+            if idx < 0 or idx >= len(self.raw_records):
+                continue
+            record = self.raw_records[idx]
+
+            if not record.get("__BINARY_RECORD__"):
+                rec_type = record.get("RECORD")
+                try:
+                    if rec_type is not None and int(rec_type) == SchRecordType.COMPONENT:
+                        self._apply_component_record(record)
+                        continue
+                except (TypeError, ValueError):
+                    pass
+
+            obj = by_index.get(idx)
+            if obj is None or not hasattr(obj, "parse_from_record"):
+                continue
+            try:
+                if isinstance(obj, AltiumSchPin):
+                    obj.parse_from_record(record, font_manager=font_manager)
+                else:
+                    obj.parse_from_record(record)
+            except Exception as e:
+                log.warning(f"Failed to re-hydrate object at record {idx}: {e}")
+
     def _get_record_name(self, record_type: int) -> str:
         """
         Get human-readable name for record type.
@@ -3284,6 +3334,62 @@ class AltiumSchLib(JsonApplyMixin):
 
         return data
 
+    @staticmethod
+    def _pair_json_objects_to_records(
+        name: str,
+        json_objects: list[dict],
+        raw_records: list[dict],
+    ) -> list[tuple[dict, int]]:
+        """
+        Pair JSON objects with the *index* of the template raw record they patch.
+
+        Prefer matching each object to its target record by the ``ObjectIndex``
+        that :meth:`to_json` stamps on it. This keeps the apply robust when the
+        payload carries objects with no counterpart in the binary — e.g. a
+        ``Parameter`` the caller appended to a symbol that has none — so the
+        records that *can* be matched are still patched instead of the whole
+        symbol being silently dropped on a bare count mismatch (the cause of
+        ``/schlib/edit`` no-op'ing colour edits, see GH issue #8). It also makes
+        sparse patches work: a payload of just the one record you changed (each
+        carrying its ``ObjectIndex``) updates only that record.
+
+        Falls back to positional pairing when the payload carries no usable
+        ``ObjectIndex`` at all (hand-written JSON), and for from-scratch symbols
+        that have no template records yet.
+        """
+        n = len(raw_records)
+        if not n:
+            # From-scratch mode: nothing to patch positionally; preserve the
+            # legacy zip (a no-op against empty raw_records).
+            return [(obj, i) for i, obj in enumerate(json_objects)]
+
+        if any(isinstance(o.get("ObjectIndex"), int) for o in json_objects):
+            pairs: list[tuple[dict, int]] = []
+            unmatched = 0
+            for json_obj in json_objects:
+                idx = json_obj.get("ObjectIndex")
+                if isinstance(idx, int) and 0 <= idx < n:
+                    pairs.append((json_obj, idx))
+                else:
+                    unmatched += 1
+            if unmatched:
+                log.warning(
+                    f"Symbol '{name}': skipped {unmatched} JSON object(s) with no "
+                    f"matching template record by ObjectIndex (patched {len(pairs)}/{n})."
+                )
+            return pairs
+
+        # No ObjectIndex anywhere: fall back to positional pairing, which only
+        # makes sense when the counts line up.
+        if len(json_objects) != n:
+            log.warning(
+                f"Symbol '{name}': Object count mismatch "
+                f"(JSON: {len(json_objects)}, template: {n}); no ObjectIndex to "
+                f"match on, skipping symbol."
+            )
+            return []
+        return [(obj, i) for i, obj in enumerate(json_objects)]
+
     def _update_from_json(self, data: dict) -> None:
         """
         Update this SchLib's data from a JSON dict.
@@ -3312,18 +3418,12 @@ class AltiumSchLib(JsonApplyMixin):
             symbol.description = sym_json.get("Description", symbol.description)
             symbol.part_count = sym_json.get("PartCount", symbol.part_count)
 
-            # Update raw_records from JSON objects
+            # Update raw_records from JSON objects.
             json_objects = sym_json.get("Objects", [])
-            if symbol.raw_records and len(json_objects) != len(symbol.raw_records):
-                log.warning(
-                    f"Symbol '{name}': Object count mismatch "
-                    f"(JSON: {len(json_objects)}, template: {len(symbol.raw_records)})"
-                )
-                continue
-
-            for i, (json_obj, raw_record) in enumerate(
-                zip(json_objects, symbol.raw_records, strict=False)
-            ):
+            pairs = self._pair_json_objects_to_records(name, json_objects, symbol.raw_records)
+            patched_indices: list[int] = []
+            for json_obj, idx in pairs:
+                raw_record = symbol.raw_records[idx]
                 # Update raw record from JSON object
                 if json_obj.get("BinaryData"):
                     # Binary record - decode and update
@@ -3333,7 +3433,7 @@ class AltiumSchLib(JsonApplyMixin):
                         binary_data = zlib.decompress(compressed)
                         raw_record["__BINARY_DATA__"] = binary_data
                     except Exception as e:
-                        log.warning(f"Failed to decode binary data for record {i}: {e}")
+                        log.warning(f"Failed to decode binary data for record: {e}")
                 else:
                     # Text record - update fields
                     for key, value in json_obj.items():
@@ -3344,6 +3444,15 @@ class AltiumSchLib(JsonApplyMixin):
                             raw_record[key] = "T" if value else "F"
                         else:
                             raw_record[key] = str(value)
+                patched_indices.append(idx)
+
+            # Re-hydrate the parsed OOP objects from the patched raw records.
+            # apply_json() mutates raw_records, but save() re-serializes the OOP
+            # objects (rectangles, designators, pins, …) back over raw_records via
+            # sync_*_to_raw_records(); without this the OOP objects keep their
+            # stale colours and the edit is silently reverted on save (GH issue #8).
+            if patched_indices:
+                symbol._rehydrate_objects_from_raw(patched_indices, self.font_manager)
 
     def __repr__(self) -> str:
         return f"AltiumSchLib('{self.filename}', {len(self.symbols)} symbols)"
