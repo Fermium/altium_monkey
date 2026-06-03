@@ -19,19 +19,48 @@ DEFAULT_SOLDER_MASK_EXPANSION_IU = 40000
 MIN_PASTE_OPENING_IU = 400
 
 
-def get_pad_mask_expansion_iu(pad: object) -> int:
+def get_pad_mask_expansion_iu(
+    pad: object,
+    default_iu: int = DEFAULT_SOLDER_MASK_EXPANSION_IU,
+    *,
+    rule_uses_default: bool = False,
+) -> int:
     """
     Return effective pad solder-mask expansion in internal units.
+
+    ``default_iu`` is the fallback used when the pad carries no expansion value.
+
+    ``rule_uses_default`` selects how *rule* mode is resolved:
+
+    - ``False`` (default, fab/IPC parity): honour the pad's cached value for both
+      RULE and MANUAL modes, exactly as before.
+    - ``True`` (viewer): only an explicit MANUAL override wins; RULE mode inherits
+      ``default_iu`` instead of the 4 mil rule value Altium bakes into a library
+      part. This lets the app's configurable default (0 by default) take effect
+      for the common "from rule" pads rather than every footprint showing a
+      synthesised 4 mil ring.
     """
     if bool(getattr(pad, "_has_mask_expansion", False)):
-        if int(getattr(pad, "soldermask_expansion_mode", 0)) in (1, 2):
+        mode = int(getattr(pad, "soldermask_expansion_mode", 0))
+        if rule_uses_default:
+            if mode == 2:  # MANUAL — explicit per-pad override
+                return int(getattr(pad, "soldermask_expansion_manual", 0) or 0)
+            return default_iu
+        if mode in (1, 2):  # RULE or MANUAL — honour the cached value
             return int(getattr(pad, "soldermask_expansion_manual", 0) or 0)
-    return DEFAULT_SOLDER_MASK_EXPANSION_IU
+    return default_iu
 
 
-def get_via_mask_expansion_iu(via: object, side: Literal["top", "bottom"]) -> int:
+def get_via_mask_expansion_iu(
+    via: object,
+    side: Literal["top", "bottom"],
+    default_iu: int = DEFAULT_SOLDER_MASK_EXPANSION_IU,
+) -> int:
     """
     Return effective via solder-mask expansion for top/bottom side.
+
+    ``default_iu`` is the fallback when the via carries no explicit expansion
+    (see :func:`get_pad_mask_expansion_iu`).
     """
     if side not in {"top", "bottom"}:
         raise ValueError(f"Invalid via solder-mask side: {side!r}")
@@ -47,20 +76,20 @@ def get_via_mask_expansion_iu(via: object, side: Literal["top", "bottom"]) -> in
             return front
         if linked and has_back:
             return back
-        return DEFAULT_SOLDER_MASK_EXPANSION_IU
+        return default_iu
 
     if linked:
         if has_front:
             return front
         if has_back:
             return back
-        return DEFAULT_SOLDER_MASK_EXPANSION_IU
+        return default_iu
 
     if has_back:
         return back
     if has_front:
         return front
-    return DEFAULT_SOLDER_MASK_EXPANSION_IU
+    return default_iu
 
 
 def get_pad_paste_expansion_iu(pad: object) -> int:
