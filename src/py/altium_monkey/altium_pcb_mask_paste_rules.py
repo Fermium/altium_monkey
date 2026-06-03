@@ -55,15 +55,25 @@ def get_via_mask_expansion_iu(
     via: object,
     side: Literal["top", "bottom"],
     default_iu: int = DEFAULT_SOLDER_MASK_EXPANSION_IU,
+    *,
+    rule_uses_default: bool = False,
 ) -> int:
     """
     Return effective via solder-mask expansion for top/bottom side.
 
-    ``default_iu`` is the fallback when the via carries no explicit expansion
-    (see :func:`get_pad_mask_expansion_iu`).
+    ``default_iu`` is the fallback when the via carries no explicit expansion.
+
+    ``rule_uses_default`` mirrors :func:`get_pad_mask_expansion_iu`: when True
+    (viewer), only an explicit MANUAL override (``solder_mask_expansion_mode == 2``)
+    wins — RULE / NoMask vias inherit ``default_iu`` instead of the cached 4 mil
+    rule value, so they honour the app's configurable default. When False
+    (fab/IPC-2581 parity) the cached per-side values are honoured as before.
     """
     if side not in {"top", "bottom"}:
         raise ValueError(f"Invalid via solder-mask side: {side!r}")
+
+    if rule_uses_default and int(getattr(via, "solder_mask_expansion_mode", 0)) != 2:
+        return default_iu
 
     has_front = bool(getattr(via, "_has_soldermask_expansion_front", False))
     has_back = bool(getattr(via, "_has_soldermask_expansion_back", False))
