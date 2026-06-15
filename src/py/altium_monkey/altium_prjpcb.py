@@ -1157,7 +1157,12 @@ class AltiumPrjPcb:
             doc_path = doc["path"]
             if not doc_path.lower().endswith(ext):
                 continue
-            full_path = (project_dir / doc_path).resolve()
+            # PrjPcb document paths use Windows separators ("SCH\\Foo.SchDoc").
+            # Normalize to "/" before joining so they resolve on POSIX (same
+            # pattern as _altium_path_name above); otherwise the backslash
+            # becomes a literal filename char, .exists() is False, and every
+            # SchDoc/PcbDoc is silently dropped → empty design → analyze 500.
+            full_path = (project_dir / doc_path.replace("\\", "/")).resolve()
             if full_path.exists():
                 matched_paths.append(full_path)
         return matched_paths
