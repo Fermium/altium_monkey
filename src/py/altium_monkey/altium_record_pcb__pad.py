@@ -6,7 +6,7 @@ import html
 import logging
 import math
 import struct
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from .altium_pcb_enums import PadShape
 from .altium_pcb_mask_paste_rules import (
@@ -30,6 +30,22 @@ if TYPE_CHECKING:
 _MIL_TO_MM = 0.0254
 
 log = logging.getLogger(__name__)
+
+
+class _PadSvgGeometryState(TypedDict):
+    use_side_expansion: bool
+    geometry_layer: PcbLayer
+    expansion_iu: int
+    base_width_mils: float
+    base_height_mils: float
+    width_mm: float
+    height_mm: float
+    cx: float
+    cy: float
+    half_w: float
+    half_h: float
+    shape: int
+    rotation: float
 
 
 # SubRecord 6 alt_shape values that override the base shape from SubRecord 5.
@@ -162,6 +178,7 @@ class AltiumPcbPad(PcbGraphicalObject):
         self._flags: int = 0
         self.polygon_index: int = 0xFFFF  # Offset 5-6: always 0xFFFF for pads
         self.union_index: int = 0xFFFFFFFF  # Offset 9-12: 0xFFFFFFFF=none
+        self.pad_user_union_index: int = 0  # SubRecord 5 offset 106
         self.user_routed: bool = True  # flags1 bit3 (0x08)
         self._flags1_bit0: int = 0  # flags1 bit0 (preserved raw)
 
@@ -581,6 +598,9 @@ class AltiumPcbPad(PcbGraphicalObject):
                 self.cache_solder_mask_expansion_valid = content[pos]  # offset 104
                 pos += 1
 
+        if len(content) >= 110:
+            self.pad_user_union_index = struct.unpack("<I", content[106:110])[0]
+
         if len(content) >= 118:
             self.layer_v7_save_id = struct.unpack("<I", content[114:118])[0]
 
@@ -836,6 +856,7 @@ class AltiumPcbPad(PcbGraphicalObject):
             int(self.soldermask_expansion_mode or 0),
             int(self.cache_paste_mask_expansion_valid or 0),
             int(self.cache_solder_mask_expansion_valid or 0),
+            int(self.pad_user_union_index or 0),
             0 if self.layer_v7_save_id is None else int(self.layer_v7_save_id),
             bool(self._has_hole_tolerances),
             int(self._hole_positive_tolerance),
@@ -924,6 +945,9 @@ class AltiumPcbPad(PcbGraphicalObject):
         ext_data[41] = int(self.soldermask_expansion_mode) & 0xFF
         ext_data[42] = int(self.cache_paste_mask_expansion_valid) & 0xFF
         ext_data[43] = int(self.cache_solder_mask_expansion_valid) & 0xFF
+        struct.pack_into(
+            "<I", ext_data, 45, int(self.pad_user_union_index or 0) & 0xFFFFFFFF
+        )
         struct.pack_into(
             "<I", ext_data, 53, int(self.layer_v7_save_id or 0) & 0xFFFFFFFF
         )
@@ -1787,7 +1811,7 @@ class AltiumPcbPad(PcbGraphicalObject):
     def _resolve_svg_target_layer(
         self,
         for_layer: PcbLayer | None,
-    ) -> tuple[PcbLayer, PcbLayer] | None:
+    ) -> tuple[PcbLayer, PcbLayer | None] | None:
         source_layer = self._source_layer()
         layer = for_layer
         if layer is None:
@@ -1815,11 +1839,11 @@ class AltiumPcbPad(PcbGraphicalObject):
             return None
 
         if render_holes and self.hole_size > 0 and layer.is_copper():
-            return self._hole_svg_elements(
+            return self._hole_knockout_svg_elements(
                 ctx,
                 layer,
-                stroke or ctx.layer_color(layer),
                 include_metadata=include_metadata,
+                hole_color=stroke or ctx.layer_color(layer),
             )
         return []
 
@@ -1829,7 +1853,7 @@ class AltiumPcbPad(PcbGraphicalObject):
         *,
         layer: PcbLayer,
         source_layer: PcbLayer | None,
-    ) -> dict[str, object] | None:
+    ) -> _PadSvgGeometryState | None:
         use_side_expansion = False
         geometry_layer = layer
         expansion_iu = 0
@@ -1914,21 +1938,21 @@ class AltiumPcbPad(PcbGraphicalObject):
         *,
         color: str,
         meta_attrs: list[str],
-        geometry: dict[str, object],
+        geometry: _PadSvgGeometryState,
     ) -> list[str]:
-        cx = float(geometry["cx"])
-        cy = float(geometry["cy"])
-        half_w = float(geometry["half_w"])
-        half_h = float(geometry["half_h"])
-        width_mm = float(geometry["width_mm"])
-        height_mm = float(geometry["height_mm"])
-        shape = int(geometry["shape"])
-        rotation = float(geometry["rotation"])
+        cx = geometry["cx"]
+        cy = geometry["cy"]
+        half_w = geometry["half_w"]
+        half_h = geometry["half_h"]
+        width_mm = geometry["width_mm"]
+        height_mm = geometry["height_mm"]
+        shape = geometry["shape"]
+        rotation = geometry["rotation"]
         geometry_layer = geometry["geometry_layer"]
-        base_width_mils = float(geometry["base_width_mils"])
-        base_height_mils = float(geometry["base_height_mils"])
-        use_side_expansion = bool(geometry["use_side_expansion"])
-        expansion_iu = int(geometry["expansion_iu"])
+        base_width_mils = geometry["base_width_mils"]
+        base_height_mils = geometry["base_height_mils"]
+        use_side_expansion = geometry["use_side_expansion"]
+        expansion_iu = geometry["expansion_iu"]
 
         if shape == PadShape.CIRCLE:
             transform = ""

@@ -33,6 +33,7 @@ class AltiumPcbComponent:
         y: Y position with "mil" suffix
         rotation: Rotation angle in scientific notation (e.g., "1.80000000000000E+0002" = 180 deg)
         unique_id: 8-character unique identifier (UNIQUEID field, linkage key for pads/parameters)
+        union_index: User-union index from the component `UNIONINDEX` field.
         description: Component description (SOURCEDESCRIPTION field)
         parameters: Dict of component parameters from PrimitiveParameters/Data
         raw_record: Original text record dict from Components6/Data
@@ -52,6 +53,7 @@ class AltiumPcbComponent:
     y: str  # "27514.9995mil" format
     rotation: str = ""
     unique_id: str = ""
+    union_index: int = 0
     description: str = ""
     parameters: dict[str, object] | None = None
     raw_record: dict[str, object] | None = None
@@ -72,12 +74,17 @@ class AltiumPcbComponent:
         """
         return dict(self.raw_record or {})
 
+    def _raw_record_map(self) -> dict[str, object]:
+        if self.raw_record is None:
+            self.raw_record = {}
+        return self.raw_record
+
     def _raw_text(self, key: str) -> str:
-        value = self.raw_record.get(key)
+        value = self._raw_record_map().get(key)
         return "" if value is None else str(value)
 
     def _int_field(self, key: str) -> int | None:
-        value = self.raw_record.get(key)
+        value = self._raw_record_map().get(key)
         if value is None or str(value).strip() == "":
             return None
         try:
@@ -97,13 +104,13 @@ class AltiumPcbComponent:
             return None
 
     def _bool_flag(self, key: str, default: bool) -> bool:
-        value = self.raw_record.get(key)
+        value = self._raw_record_map().get(key)
         if value is None:
             return default
         return str(value).strip().upper() not in {"FALSE", "0", "NO", "OFF"}
 
     def _optional_bool_flag(self, key: str) -> bool | None:
-        value = self.raw_record.get(key)
+        value = self._raw_record_map().get(key)
         if value is None:
             return None
         return str(value).strip().upper() not in {"FALSE", "0", "NO", "OFF"}
@@ -203,7 +210,7 @@ class AltiumPcbComponent:
 
     @property
     def height(self) -> str:
-        return str(self.raw_record.get("HEIGHT", "0mil") or "0mil")
+        return str(self._raw_record_map().get("HEIGHT", "0mil") or "0mil")
 
     @property
     def lock_strings(self) -> bool | None:

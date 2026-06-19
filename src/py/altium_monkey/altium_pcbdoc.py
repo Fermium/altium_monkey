@@ -7,7 +7,7 @@ import logging
 import math
 import struct
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Required, Sequence, TypedDict, Unpack
 import zlib
 
 from .altium_api_markers import public_api
@@ -26,6 +26,7 @@ from .altium_embedded_files import (
     sanitize_embedded_asset_name,
 )
 from .altium_pcb_component import AltiumPcbComponent
+from .altium_pcbdoc_builder_components import build_component_stream
 from .altium_pcb_dimension import AltiumPcbDimension, parse_dimensions6_stream
 from .altium_pcb_extended_primitive_information import (
     AltiumPcbExtendedPrimitiveInformation,
@@ -43,9 +44,11 @@ from .altium_pcb_custom_shapes import (
     resolve_pcbdoc_custom_pad_shapes,
     serialize_custom_shapes_stream,
 )
+from .altium_pcb_property_helpers import decode_dxp_parameter_value
 from .altium_pcb_rule import AltiumPcbRule
 from .altium_pcb_via_structure import (
     AltiumPcbViaStructure,
+    AltiumPcbViaStructureFeature,
     AltiumPcbViaStructureLink,
     VIA_STRUCTURE_STREAM_NAMES,
     attach_via_structures_to_vias,
@@ -56,6 +59,20 @@ from .altium_pcb_via_structure import (
     parse_via_structure_links_stream,
     parse_via_structure_manager_stream,
     via_structure_header_count,
+)
+from .altium_pcbdoc_unions import (
+    PCB_USER_UNION_MEMBER_COLLECTIONS,
+    PcbSmartUnionRecord,
+    PcbUnionMemberRef,
+    PcbUnionNameRecord,
+    PcbUserUnion,
+    build_pcb_user_unions,
+    decode_pcb_smart_union_records_from_streams,
+    decode_pcb_union_name_records_from_streams,
+    encode_pcb_union_name_records,
+    pcb_packed_mask_user_union_index,
+    pcb_pad_user_union_index,
+    pcb_union_name_byte_count,
 )
 from .altium_record_pcb__board_region import AltiumPcbBoardRegion
 from .altium_record_pcb__arc import AltiumPcbArc
@@ -79,6 +96,8 @@ from .altium_record_pcb__shapebased_region import (
     PcbExtendedVertex,
 )
 from .altium_pcb_enums import (
+    MechanicalLayerKind,
+    PadHoleShape,
     PadShape,
     PcbBarcodeKind,
     PcbBarcodeRenderMode,
@@ -90,6 +109,14 @@ from .altium_pcb_enums import (
     PcbTextAutoposition,
     PcbTextJustification,
     PcbTextKind,
+)
+from .altium_pcb_layer_kind_mapping import (
+    PcbLayerKindMapping,
+    coerce_layer_kind_mapping_layer_id,
+)
+from .altium_pcb_mask_expansion import (
+    PcbMaskExpansionInput,
+    PcbMaskExpansionModeInput,
 )
 from .altium_record_pcb__component_body import AltiumPcbComponentBody
 from .altium_pcbdoc_layers import (
@@ -118,12 +145,38 @@ log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .altium_board import BoardOutlineVertex
+    from .altium_pcbdoc_builder import (
+        PcbCustomPadLayerShapeSpec,
+        PcbDocBuildProfile,
+    )
     from .altium_pcb_surface import PCB_SurfaceRole, PCB_SurfaceSide
     from .altium_pcb_svg_renderer import PcbSvgRenderOptions
     from .altium_pcblib import AltiumPcbLib
 
 PcbDocPointMils = Sequence[float]
 PcbDocBoundsMils = Sequence[float]
+
+
+class _ComponentBodyRectangleKwargs(TypedDict, total=False):
+    layer: int | PcbLayer
+    overall_height_mils: Required[float]
+    standoff_height_mils: float
+    cavity_height_mils: float
+    body_projection: PcbBodyProjection
+    model: AltiumPcbModel | None
+    model_2d_mils: PcbDocPointMils
+    model_2d_rotation_degrees: float
+    model_3d_rotx_degrees: float | None
+    model_3d_roty_degrees: float | None
+    model_3d_rotz_degrees: float | None
+    model_3d_dz_mils: float | None
+    model_checksum: int | None
+    identifier: str | None
+    name: str
+    body_color_3d: int
+    body_opacity_3d: float
+    model_type: int
+    model_source: str | None
 
 
 def _coerce_pcbdoc_point_mils(
@@ -739,6 +792,8 @@ def _localize_custom_pad_contract(
             )
             footprint.regions.append(local_region)
             footprint._record_order.append(local_region)
+        if not isinstance(local_region, AltiumPcbRegion):
+            continue
 
         source_shape_region = getattr(source_layer_shape, "shape_region", None)
         local_shape_region = None
@@ -1018,11 +1073,18 @@ class AltiumPcbDoc:
         # CRITICAL: Stores raw binary for ALL streams (both parsed and unparsed)
         # to ensure complete round-trip preservation
         self._raw_streams: dict[str, bytes] = {}
+        self.union_name_records: tuple[PcbUnionNameRecord, ...] = ()
+        self.smart_unions: tuple[PcbSmartUnionRecord, ...] = ()
+        self._union_authoring_dirty: bool = False
         self.raw_custom_shapes_header: bytes | None = None
         self.raw_custom_shapes_data: bytes | None = None
+        self._layer_kind_mapping_data = PcbLayerKindMapping.make_default()
+        self.mechanical_layer_kinds: Mapping[int, MechanicalLayerKind] = (
+            self._layer_kind_mapping_data.mapping
+        )
         self._authoring_builder: Any | None = None
 
-    def _profile_for_authoring_builder(self) -> object:
+    def _profile_for_authoring_builder(self) -> "PcbDocBuildProfile":
         from .altium_pcbdoc_builder import PcbDocBuildProfile
 
         if self.filepath is not None and self.filepath.exists():
@@ -1057,6 +1119,7 @@ class AltiumPcbDoc:
         self.regions = builder.regions
         self.shapebased_regions = builder.shapebased_regions
         self.vias = builder.vias
+        self.custom_shapes = builder.custom_shapes
         self.via_structures = list(getattr(builder, "via_structures", []))
         self.via_structure_links = list(getattr(builder, "via_structure_links", []))
         self.via_structure_manager_count = len(self.via_structures)
@@ -1064,10 +1127,13 @@ class AltiumPcbDoc:
         self.extended_primitive_information = list(
             getattr(builder, "extended_primitive_information", [])
         )
+        self.dimensions = builder.dimensions
         self.models = builder.models
         self.component_bodies = builder.component_bodies
         self.shapebased_component_bodies = builder.shapebased_component_bodies
         self.board = builder.board_data.top_level_board
+        self._layer_kind_mapping_data = builder.layer_kind_mapping_data
+        self.mechanical_layer_kinds = builder.mechanical_layer_kinds
 
     def _sync_from_saved_authoring_file(
         self,
@@ -1183,6 +1249,85 @@ class AltiumPcbDoc:
                 the underlying PCB authoring builder.
         """
         self._ensure_authoring_builder().set_layer_stack_template(template)
+        self._mirror_authoring_builder_state()
+
+    def set_mechanical_layer(
+        self,
+        layer: int | str | PcbLayer,
+        *,
+        name: str | None = None,
+        enabled: bool = True,
+    ) -> None:
+        """
+        Set a mechanical layer display name and enabled state.
+
+        Args:
+            layer: Mechanical layer token or number. Supported tokens include
+                `"MECHANICAL17"`; `PcbLayer.MECHANICAL_*` enum values cover
+                Mechanical 1 through 16.
+            name: Optional display name. If omitted, Altium's default
+                `Mechanical N` label is used.
+            enabled: Whether the layer is enabled in the Board6 registry.
+        """
+        self._ensure_authoring_builder().set_mechanical_layer(
+            layer,
+            name=name,
+            enabled=enabled,
+        )
+        self._mirror_authoring_builder_state()
+
+    def set_mechanical_layer_pair(
+        self,
+        layer_1: int | str | PcbLayer,
+        layer_2: int | str | PcbLayer,
+        *,
+        pair_index: int | None = None,
+    ) -> None:
+        """
+        Define a mechanical mirror pair used by component side flipping.
+
+        Args:
+            layer_1: First mechanical layer endpoint.
+            layer_2: Second mechanical layer endpoint.
+            pair_index: Optional native `MECHPAIR{N}` index. If omitted, the
+                first unused index is selected.
+        """
+        self._ensure_authoring_builder().set_mechanical_layer_pair(
+            layer_1,
+            layer_2,
+            pair_index=pair_index,
+        )
+        self._mirror_authoring_builder_state()
+
+    def get_mechanical_layer_kind(
+        self,
+        layer: int | str | PcbLayer,
+    ) -> MechanicalLayerKind | None:
+        """
+        Return the semantic kind assigned to a mechanical layer, if present.
+
+        Args:
+            layer: Mechanical layer token, enum, native layer id, or mechanical
+                layer number.
+        """
+        return self.mechanical_layer_kinds.get(
+            coerce_layer_kind_mapping_layer_id(layer)
+        )
+
+    def set_mechanical_layer_kind(
+        self,
+        layer: int | str | PcbLayer,
+        kind: int | str | MechanicalLayerKind,
+    ) -> None:
+        """
+        Set the semantic kind assigned to a mechanical layer.
+
+        Args:
+            layer: Mechanical layer token, enum, native layer id, or mechanical
+                layer number.
+            kind: `MechanicalLayerKind`, enum name, or native kind value.
+        """
+        self._ensure_authoring_builder().set_mechanical_layer_kind(layer, kind)
         self._mirror_authoring_builder_state()
 
     def add_net(
@@ -1462,7 +1607,7 @@ class AltiumPcbDoc:
         bottom_mils: float,
         right_mils: float,
         top_mils: float,
-        **kwargs: object,
+        **kwargs: Unpack[_ComponentBodyRectangleKwargs],
     ) -> AltiumPcbComponentBody:
         """
         Add a rectangular free 3D component body using mil-unit bounds.
@@ -2127,18 +2272,37 @@ class AltiumPcbDoc:
         width_mils: float,
         height_mils: float,
         layer: int | PcbLayer = PcbLayer.TOP,
-        shape: int | PadShape = PadShape.RECTANGLE,
+        shape: int | str | PadShape = PadShape.RECTANGLE,
         rotation_degrees: float = 0.0,
         hole_size_mils: float = 0.0,
         plated: bool | None = None,
         net: str | None = None,
         corner_radius_percent: int | None = None,
+        top_shape: int | str | PadShape | None = None,
+        top_width_mils: float | None = None,
+        top_height_mils: float | None = None,
+        mid_shape: int | str | PadShape | None = None,
+        mid_width_mils: float | None = None,
+        mid_height_mils: float | None = None,
+        bottom_shape: int | str | PadShape | None = None,
+        bottom_width_mils: float | None = None,
+        bottom_height_mils: float | None = None,
+        pad_mode: int | None = None,
         slot_length_mils: float = 0.0,
         slot_rotation_degrees: float = 0.0,
+        hole_shape: int | str | PadHoleShape = PadHoleShape.ROUND,
+        solder_mask_expansion: PcbMaskExpansionInput = None,
+        solder_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
         solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion: PcbMaskExpansionInput = None,
+        paste_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
         paste_mask_expansion_mils: float | None = None,
         hole_positive_tolerance_mils: float | None = None,
         hole_negative_tolerance_mils: float | None = None,
+        is_test_fab_top: bool = False,
+        is_test_fab_bottom: bool = False,
+        is_assy_testpoint_top: bool = False,
+        is_assy_testpoint_bottom: bool = False,
     ) -> AltiumPcbPad:
         """
         Add a pad using mil-unit center and size.
@@ -2151,6 +2315,10 @@ class AltiumPcbDoc:
         `solder_mask_expansion_mils` and `paste_mask_expansion_mils` set manual
         mask expansion values when provided. Pass `0.0` for explicit zero
         expansion.
+
+        Supplying any `top_*`, `mid_*`, or `bottom_*` pad-body override writes
+        native local-stack mode (`pad_mode=1`). Omitted local-stack values
+        inherit the base `shape`, `width_mils`, and `height_mils`.
 
         Args:
             designator: Pad designator text, for example `"1"`.
@@ -2166,10 +2334,30 @@ class AltiumPcbDoc:
                 convention when omitted.
             net: Optional net name. The net is created if needed.
             corner_radius_percent: Rounded-rectangle corner radius percentage.
+            top_shape: Optional top-layer pad body shape override.
+            top_width_mils: Optional top-layer pad body X size in mils.
+            top_height_mils: Optional top-layer pad body Y size in mils.
+            mid_shape: Optional internal-layer pad body shape override.
+            mid_width_mils: Optional internal-layer pad body X size in mils.
+            mid_height_mils: Optional internal-layer pad body Y size in mils.
+            bottom_shape: Optional bottom-layer pad body shape override.
+            bottom_width_mils: Optional bottom-layer pad body X size in mils.
+            bottom_height_mils: Optional bottom-layer pad body Y size in mils.
+            pad_mode: Optional native pad mode. Use `1` for local-stack pads.
             slot_length_mils: Optional total slot length in mils.
             slot_rotation_degrees: Slot rotation in degrees.
+            hole_shape: Drill shape: `"round"`, `"square"`, or `"slot"`.
+                Slots also require `slot_length_mils`.
+            solder_mask_expansion: Optional `PcbMaskExpansion`, mode string, or
+                native mode id for solder-mask expansion.
+            solder_mask_expansion_mode: Optional solder-mask mode string/id:
+                `"none"`, `"rule"`, or `"manual"`.
             solder_mask_expansion_mils: Optional manual solder-mask expansion
                 in mils.
+            paste_mask_expansion: Optional `PcbMaskExpansion`, mode string, or
+                native mode id for paste-mask expansion.
+            paste_mask_expansion_mode: Optional paste-mask mode string/id:
+                `"none"`, `"rule"`, or `"manual"`.
             paste_mask_expansion_mils: Optional manual paste-mask expansion in
                 mils.
             hole_positive_tolerance_mils: Optional upper drill-hole tolerance
@@ -2178,6 +2366,10 @@ class AltiumPcbDoc:
             hole_negative_tolerance_mils: Optional lower drill-hole tolerance
                 magnitude in mils. If either tolerance is supplied, an omitted
                 side is written as 0 mil.
+            is_test_fab_top: Top-side fabrication testpoint flag.
+            is_test_fab_bottom: Bottom-side fabrication testpoint flag.
+            is_assy_testpoint_top: Top-side assembly testpoint flag.
+            is_assy_testpoint_bottom: Bottom-side assembly testpoint flag.
 
         Returns:
             The authored `AltiumPcbPad` record.
@@ -2189,18 +2381,148 @@ class AltiumPcbDoc:
             width_mils=width_mils,
             height_mils=height_mils,
             layer=layer,
-            shape=int(shape),
+            shape=shape,
             rotation_degrees=rotation_degrees,
             hole_size_mils=hole_size_mils,
             plated=plated,
             net=net,
             corner_radius_percent=corner_radius_percent,
+            top_shape=top_shape,
+            top_width_mils=top_width_mils,
+            top_height_mils=top_height_mils,
+            mid_shape=mid_shape,
+            mid_width_mils=mid_width_mils,
+            mid_height_mils=mid_height_mils,
+            bottom_shape=bottom_shape,
+            bottom_width_mils=bottom_width_mils,
+            bottom_height_mils=bottom_height_mils,
+            pad_mode=pad_mode,
             slot_length_mils=slot_length_mils,
             slot_rotation_degrees=slot_rotation_degrees,
+            hole_shape=hole_shape,
+            solder_mask_expansion=solder_mask_expansion,
+            solder_mask_expansion_mode=solder_mask_expansion_mode,
             solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion=paste_mask_expansion,
+            paste_mask_expansion_mode=paste_mask_expansion_mode,
             paste_mask_expansion_mils=paste_mask_expansion_mils,
             hole_positive_tolerance_mils=hole_positive_tolerance_mils,
             hole_negative_tolerance_mils=hole_negative_tolerance_mils,
+            is_test_fab_top=is_test_fab_top,
+            is_test_fab_bottom=is_test_fab_bottom,
+            is_assy_testpoint_top=is_assy_testpoint_top,
+            is_assy_testpoint_bottom=is_assy_testpoint_bottom,
+        )
+        self._mirror_authoring_builder_state()
+        return self.pads[-1]
+
+    def add_dimension_record(
+        self,
+        *,
+        record_type: int,
+        record_payload: bytes | bytearray | memoryview,
+        record_leader: int = 0,
+    ) -> AltiumPcbDimension:
+        """
+        Add a raw Dimensions6 record to the authored PcbDoc.
+
+        This preserves existing native dimension payloads while keeping room for
+        a later semantic dimension-authoring API.
+        """
+        builder = self._ensure_authoring_builder()
+        dimension = builder.add_dimension_record(
+            record_type=record_type,
+            record_payload=record_payload,
+            record_leader=record_leader,
+        )
+        self._mirror_authoring_builder_state()
+        return dimension
+
+    def add_custom_pad(
+        self,
+        *,
+        designator: str,
+        position_mils: PcbDocPointMils,
+        outline_points_mils: Sequence[PcbDocPointMils],
+        layer: int | PcbLayer = PcbLayer.TOP,
+        offset_mils: PcbDocPointMils = (0.0, 0.0),
+        anchor_diameter_mils: float = 1.0,
+        anchor_width_mils: float | None = None,
+        anchor_height_mils: float | None = None,
+        anchor_rotation_degrees: float = 0.0,
+        anchor_shape: int | str | PadShape = PadShape.CIRCLE,
+        pad_index: int | None = None,
+        hole_points_mils: Sequence[Sequence[PcbDocPointMils]] | None = None,
+        outline_vertices: Sequence[PcbExtendedVertex] | None = None,
+        outline_points_are_local: bool = True,
+        layer_shapes: Sequence["PcbCustomPadLayerShapeSpec"] | None = None,
+        net: str | None = None,
+        hole_size_mils: float = 0.0,
+        plated: bool | None = None,
+        slot_length_mils: float = 0.0,
+        slot_rotation_degrees: float = 0.0,
+        hole_shape: int | str | PadHoleShape = PadHoleShape.ROUND,
+        hole_positive_tolerance_mils: float | None = None,
+        hole_negative_tolerance_mils: float | None = None,
+        solder_mask_expansion: PcbMaskExpansionInput = None,
+        solder_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        solder_mask_expansion_mils: float | None = None,
+        paste_mask_expansion: PcbMaskExpansionInput = None,
+        paste_mask_expansion_mode: PcbMaskExpansionModeInput | None = None,
+        paste_mask_expansion_mils: float | None = None,
+    ) -> AltiumPcbPad:
+        """
+        Add a board custom pad using an anchor pad and custom outline region.
+
+        Point arguments are in mils. With the default
+        `outline_points_are_local=True`, outline and hole points are relative
+        to `position_mils + offset_mils`. Pass `False` for absolute board
+        coordinates. `outline_vertices` can preserve arc-bearing outlines when
+        paired with matching outline points. `layer_shapes` can add more
+        layer-specific custom bodies and holes that share the same anchor pad.
+        Drill fields apply to the anchor pad. The authored PcbDoc also emits
+        `CustomShapes/Data` so the shape reattaches to the pad on readback.
+        """
+        builder = self._ensure_authoring_builder()
+        builder.add_custom_pad(
+            designator=designator,
+            position_mils=_coerce_pcbdoc_point_mils(position_mils, "position_mils"),
+            outline_points_mils=[
+                _coerce_pcbdoc_point_mils(point, "outline_points_mils vertex")
+                for point in outline_points_mils
+            ],
+            layer=layer,
+            offset_mils=_coerce_pcbdoc_point_mils(offset_mils, "offset_mils"),
+            anchor_diameter_mils=anchor_diameter_mils,
+            anchor_width_mils=anchor_width_mils,
+            anchor_height_mils=anchor_height_mils,
+            anchor_rotation_degrees=anchor_rotation_degrees,
+            anchor_shape=anchor_shape,
+            pad_index=pad_index,
+            hole_points_mils=[
+                [
+                    _coerce_pcbdoc_point_mils(point, "hole_points_mils vertex")
+                    for point in hole
+                ]
+                for hole in (hole_points_mils or [])
+            ],
+            outline_vertices=outline_vertices,
+            outline_points_are_local=outline_points_are_local,
+            layer_shapes=layer_shapes,
+            net=net,
+            hole_size_mils=hole_size_mils,
+            plated=plated,
+            slot_length_mils=slot_length_mils,
+            slot_rotation_degrees=slot_rotation_degrees,
+            hole_shape=hole_shape,
+            hole_positive_tolerance_mils=hole_positive_tolerance_mils,
+            hole_negative_tolerance_mils=hole_negative_tolerance_mils,
+            solder_mask_expansion=solder_mask_expansion,
+            solder_mask_expansion_mode=solder_mask_expansion_mode,
+            solder_mask_expansion_mils=solder_mask_expansion_mils,
+            paste_mask_expansion=paste_mask_expansion,
+            paste_mask_expansion_mode=paste_mask_expansion_mode,
+            paste_mask_expansion_mils=paste_mask_expansion_mils,
         )
         self._mirror_authoring_builder_state()
         return self.pads[-1]
@@ -2215,11 +2537,14 @@ class AltiumPcbDoc:
         layer_end: int | PcbLayer = PcbLayer.BOTTOM,
         net: str | None = None,
         ipc4761_via_type: int | PcbIpc4761ViaType = PcbIpc4761ViaType.NONE,
+        ipc4761_features: Sequence[AltiumPcbViaStructureFeature] | None = None,
         propagation_delay_ps: float | None = None,
         hole_positive_tolerance_mils: float | None = None,
         hole_negative_tolerance_mils: float | None = None,
         is_tent_top: bool = False,
         is_tent_bottom: bool = False,
+        solder_mask_expansion_top_mils: float | None = None,
+        solder_mask_expansion_bottom_mils: float | None = None,
         is_test_fab_top: bool = False,
         is_test_fab_bottom: bool = False,
         is_assy_testpoint_top: bool = False,
@@ -2236,6 +2561,8 @@ class AltiumPcbDoc:
             layer_end: End layer as `PcbLayer` or native layer id.
             net: Optional net name. The net is created if needed.
             ipc4761_via_type: Optional IPC-4761 via-protection type.
+            ipc4761_features: Optional explicit IPC-4761 feature rows. Omit to
+                use Altium's default rows for `ipc4761_via_type`.
             propagation_delay_ps: Optional via propagation delay in picoseconds.
             hole_positive_tolerance_mils: Optional upper drill-hole tolerance
                 in mils. If either tolerance is supplied, an omitted side is
@@ -2248,6 +2575,10 @@ class AltiumPcbDoc:
             is_tent_bottom: Bottom-side solder-mask tenting flag. Authored vias
                 with tenting use AD25-compatible manual solder-mask expansion
                 defaults.
+            solder_mask_expansion_top_mils: Optional signed top/front manual
+                solder-mask expansion in mils.
+            solder_mask_expansion_bottom_mils: Optional signed bottom/back
+                manual solder-mask expansion in mils.
             is_test_fab_top: Top-side fabrication testpoint flag.
             is_test_fab_bottom: Bottom-side fabrication testpoint flag.
             is_assy_testpoint_top: Top-side assembly testpoint flag.
@@ -2265,11 +2596,14 @@ class AltiumPcbDoc:
             layer_end=layer_end,
             net=net,
             ipc4761_via_type=ipc4761_via_type,
+            ipc4761_features=ipc4761_features,
             propagation_delay_ps=propagation_delay_ps,
             hole_positive_tolerance_mils=hole_positive_tolerance_mils,
             hole_negative_tolerance_mils=hole_negative_tolerance_mils,
             is_tent_top=is_tent_top,
             is_tent_bottom=is_tent_bottom,
+            solder_mask_expansion_top_mils=solder_mask_expansion_top_mils,
+            solder_mask_expansion_bottom_mils=solder_mask_expansion_bottom_mils,
             is_test_fab_top=is_test_fab_top,
             is_test_fab_bottom=is_test_fab_bottom,
             is_assy_testpoint_top=is_assy_testpoint_top,
@@ -2284,9 +2618,16 @@ class AltiumPcbDoc:
         outline_points_mils: list[tuple[float, float]],
         layer: int | PcbLayer = PcbLayer.TOP,
         hole_points_mils: list[list[tuple[float, float]]] | None = None,
+        outline_vertices: Sequence[PcbExtendedVertex] | None = None,
+        kind: int | PcbRegionKind = PcbRegionKind.COPPER,
+        is_board_cutout: bool = False,
+        is_shapebased: bool = False,
         is_keepout: bool = False,
         keepout_restrictions: int = 0,
+        subpoly_index: int = -1,
         net: str | None = None,
+        cavity_height_mils: float = 0.0,
+        v7_layer: str | None = None,
     ) -> AltiumPcbRegion:
         """
         Add a region polygon using mil-unit vertices.
@@ -2295,9 +2636,21 @@ class AltiumPcbDoc:
             outline_points_mils: Outer polygon vertices in mils.
             layer: `PcbLayer` or native layer id.
             hole_points_mils: Optional list of hole polygons in mils.
+            outline_vertices: Optional native shape-based-region outline
+                vertices. Use this when line/arc segment semantics should be
+                preserved.
+            kind: Native region kind. Prefer `PcbRegionKind` values when
+                authoring new public examples.
+            is_board_cutout: Mark the region as a board cutout.
+            is_shapebased: Write shape-based region metadata where supported.
             is_keepout: Mark the region as a keepout.
             keepout_restrictions: Native keepout restriction bitmask.
+            subpoly_index: Native sub-polygon index.
             net: Optional net name. The net is created if needed.
+            cavity_height_mils: Cavity definition height in mils for
+                `PcbRegionKind.CAVITY_DEFINITION` regions.
+            v7_layer: Optional native `V7_LAYER` property override for
+                advanced fixture recreation.
 
         Returns:
             The authored `AltiumPcbRegion` record.
@@ -2307,9 +2660,16 @@ class AltiumPcbDoc:
             outline_points_mils=outline_points_mils,
             layer=layer,
             hole_points_mils=hole_points_mils,
+            outline_vertices=outline_vertices,
+            region_kind=kind,
+            is_board_cutout=is_board_cutout,
+            is_shapebased=is_shapebased,
             is_keepout=is_keepout,
             keepout_restrictions=keepout_restrictions,
+            subpoly_index=subpoly_index,
             net=net,
+            cavity_height_mils=cavity_height_mils,
+            v7_layer=v7_layer,
         )
         self._mirror_authoring_builder_state()
         return self.regions[-1]
@@ -2420,6 +2780,8 @@ class AltiumPcbDoc:
         if verbose:
             log.info("  Storing unparsed streams for passthrough...")
         self._store_raw_streams(ole, verbose=verbose)
+        self._parse_layer_kind_mapping()
+        self._parse_union_streams(verbose=verbose)
 
     def _parse_text_lookup_tables(
         self,
@@ -2480,14 +2842,20 @@ class AltiumPcbDoc:
             current_uid: str | None = None
             for record in param_records:
                 if "PRIMITIVEID" in record:
-                    current_uid = record["PRIMITIVEID"]
+                    current_uid = str(record["PRIMITIVEID"] or "")
+                    if not current_uid:
+                        continue
                     if "COUNT" in record and current_uid not in parameter_map:
                         parameter_map[current_uid] = {}
                     continue
                 if "NAME" in record and "VALUE" in record and current_uid:
-                    parameter_map.setdefault(current_uid, {})[record["NAME"]] = record[
-                        "VALUE"
-                    ]
+                    name = record["NAME"]
+                    value = record["VALUE"]
+                    if name is None or value is None:
+                        continue
+                    parameter_map.setdefault(current_uid, {})[str(name)] = (
+                        decode_dxp_parameter_value(value)
+                    )
             if verbose:
                 log.info(f"    Found parameters for {len(parameter_map)} components")
         except Exception as exc:
@@ -2512,21 +2880,30 @@ class AltiumPcbDoc:
             log.info("  Parsing Components6/Data...")
         component_records = get_records_in_section(ole, "Components6/Data")
         for index, record in enumerate(component_records):
-            unique_id = record.get("UNIQUEID", "")
+            unique_id = str(record.get("UNIQUEID") or "")
+            component_parameters: dict[str, object] = {
+                key: value for key, value in parameter_map.get(unique_id, {}).items()
+            }
+            raw_record: dict[str, object] = {
+                str(key): value for key, value in record.items() if value is not None
+            }
             self.components.append(
                 AltiumPcbComponent(
-                    designator=designator_map.get(
-                        index, record.get("SOURCEDESIGNATOR", "")
+                    designator=str(
+                        designator_map.get(index)
+                        or record.get("SOURCEDESIGNATOR")
+                        or ""
                     ),
-                    footprint=record.get("PATTERN", ""),
-                    layer=record.get("LAYER", ""),
-                    x=record.get("X", ""),
-                    y=record.get("Y", ""),
-                    rotation=record.get("ROTATION", ""),
+                    footprint=str(record.get("PATTERN") or ""),
+                    layer=str(record.get("LAYER") or ""),
+                    x=str(record.get("X") or ""),
+                    y=str(record.get("Y") or ""),
+                    rotation=str(record.get("ROTATION") or ""),
                     unique_id=unique_id,
-                    description=record.get("SOURCEDESCRIPTION", ""),
-                    parameters=parameter_map.get(unique_id, {}),
-                    raw_record=record,
+                    union_index=int(record.get("UNIONINDEX", "0") or "0"),
+                    description=str(record.get("SOURCEDESCRIPTION") or ""),
+                    parameters=component_parameters,
+                    raw_record=raw_record,
                     component_kind=parse_component_kind(record),
                 )
             )
@@ -3447,6 +3824,34 @@ class AltiumPcbDoc:
                 if verbose:
                     log.warning(f"Could not read stream {stream_name}: {e}")
 
+    def _parse_union_streams(self, *, verbose: bool) -> None:
+        """
+        Decode read-only union catalogs from raw passthrough streams.
+        """
+        self.union_name_records = decode_pcb_union_name_records_from_streams(
+            self._raw_streams
+        )
+        self.smart_unions = decode_pcb_smart_union_records_from_streams(
+            self._raw_streams
+        )
+        if verbose and (self.union_name_records or self.smart_unions):
+            log.info(
+                "    Parsed %d union name record(s), %d smart-union record(s)",
+                len(self.union_name_records),
+                len(self.smart_unions),
+            )
+
+    def _parse_layer_kind_mapping(self) -> None:
+        """
+        Decode mechanical layer kind assignments from raw passthrough streams.
+        """
+        data = self._raw_streams.get("LayerKindMapping/Data")
+        if data is None:
+            self._layer_kind_mapping_data = PcbLayerKindMapping.make_default()
+        else:
+            self._layer_kind_mapping_data = PcbLayerKindMapping.from_bytes(data)
+        self.mechanical_layer_kinds = self._layer_kind_mapping_data.mapping
+
     def save(self, filepath: Path | str, verbose: bool = False) -> None:
         """
         Save to binary PcbDoc format.
@@ -3460,6 +3865,12 @@ class AltiumPcbDoc:
         output_path = Path(filepath)
         if self._authoring_builder is not None:
             self._authoring_builder.save(output_path)
+            if self._union_authoring_dirty:
+                parsed = self.from_file(output_path, verbose=verbose)
+                parsed.union_name_records = self.union_name_records
+                parsed.smart_unions = self.smart_unions
+                parsed._union_authoring_dirty = True
+                parsed._to_file_impl(output_path, verbose=verbose)
             self._sync_from_saved_authoring_file(output_path, verbose=verbose)
             return
         self._to_file_impl(output_path, verbose=verbose)
@@ -3528,6 +3939,23 @@ class AltiumPcbDoc:
             "ViaStructures/Data", serialize_via_structure_links_stream(links)
         )
 
+    def _write_union_streams(self, writer: AltiumOleWriter, *, verbose: bool) -> None:
+        """
+        Write user-union catalog streams after explicit union authoring.
+        """
+        if not self._union_authoring_dirty:
+            return
+        writer.add_stream("UnionNames/Header", b"\x01\x00\x00\x00")
+        writer.add_stream(
+            "UnionNames/Data",
+            encode_pcb_union_name_records(self.union_name_records),
+        )
+        if verbose:
+            log.info(
+                "  Wrote UnionNames streams (%d record(s))",
+                len(self.union_name_records),
+            )
+
     def _write_basic_primitive_streams(
         self, writer: AltiumOleWriter, *, verbose: bool
     ) -> None:
@@ -3576,6 +4004,23 @@ class AltiumPcbDoc:
                     f"  Writing BoardRegions/Data ({len(self.board_regions)} board regions)..."
                 )
             writer.add_stream("BoardRegions/Data", self._serialize_board_regions())
+
+    def _write_component_streams(
+        self, writer: AltiumOleWriter, *, verbose: bool
+    ) -> None:
+        """
+        Write component placement records after semantic component mutation.
+        """
+        if not self.components:
+            return
+        if not self._union_authoring_dirty:
+            return
+        if verbose:
+            log.info(
+                f"  Writing Components6/Data ({len(self.components)} components)..."
+            )
+        writer.add_stream("Components6/Header", struct.pack("<I", len(self.components)))
+        writer.add_stream("Components6/Data", build_component_stream(self.components))
 
     def _write_shapebased_region_stream(
         self, writer: AltiumOleWriter, *, verbose: bool
@@ -3680,6 +4125,10 @@ class AltiumPcbDoc:
                 log.info(
                     f"  Writing Dimensions6/Data ({len(self.dimensions)} dimensions)..."
                 )
+            writer.add_stream(
+                "Dimensions6/Header",
+                len(self.dimensions).to_bytes(4, byteorder="little"),
+            )
             writer.add_stream("Dimensions6/Data", self._serialize_dimensions())
 
         if self.extended_primitive_information:
@@ -3718,12 +4167,14 @@ class AltiumPcbDoc:
         writer = AltiumOleWriter()
 
         self._write_passthrough_streams(writer, verbose=verbose)
+        self._write_component_streams(writer, verbose=verbose)
         self._write_basic_primitive_streams(writer, verbose=verbose)
         self._write_shapebased_region_stream(writer, verbose=verbose)
         self._write_component_body_streams(writer, verbose=verbose)
         self._write_model_streams(writer, verbose=verbose)
         self._write_support_streams(writer, verbose=verbose)
         self._write_via_structure_streams(writer, verbose=verbose)
+        self._write_union_streams(writer, verbose=verbose)
 
         # Write to file
         writer.write(str(filepath))
@@ -4718,15 +5169,16 @@ class AltiumPcbDoc:
 
         Returns:
             Dict with primitive-family keys such as `pads`, `tracks`, `arcs`,
-            `fills`, `texts`, `regions`, `board_regions`, and
+            `vias`, `fills`, `texts`, `regions`, `board_regions`, and
             `component_bodies`. Each value is a list of matching primitive
-            objects. Vias and polygons are excluded because they do not carry a
+            objects. Polygons are excluded because they do not carry a
             component index.
         """
         result: dict[str, list] = {
             "pads": [],
             "tracks": [],
             "arcs": [],
+            "vias": [],
             "fills": [],
             "texts": [],
             "regions": [],
@@ -4742,6 +5194,9 @@ class AltiumPcbDoc:
         for arc in self.arcs:
             if arc.component_index == component_index:
                 result["arcs"].append(arc)
+        for via in self.vias:
+            if via.component_index == component_index:
+                result["vias"].append(via)
         for fill in self.fills:
             if fill.component_index == component_index:
                 result["fills"].append(fill)
@@ -4942,6 +5397,408 @@ class AltiumPcbDoc:
                 pairs[pair.negative_net_name] = pair
         return pairs
 
+    @property
+    def user_unions(self) -> tuple[PcbUserUnion, ...]:
+        """
+        Return read-only semantic views of named user-defined PCB unions.
+
+        Typed smart unions are excluded from this view. Known generated
+        via-stitching and via-shielding child vias are also excluded when their
+        byte-sized primitive union index collides with a user-union id.
+        """
+        return build_pcb_user_unions(self)
+
+    @staticmethod
+    def _validate_user_union_name(name: str) -> str:
+        value = str(name)
+        if not value:
+            raise ValueError("User union name must not be empty")
+        if "\x00" in value:
+            raise ValueError("User union name must not contain NUL characters")
+        return value
+
+    def _typed_smart_union_indexes(self) -> set[int]:
+        return {record.union_index for record in self.smart_unions}
+
+    def _user_union_record(self, union_index: int) -> PcbUnionNameRecord | None:
+        for record in self.union_name_records:
+            if record.union_index == int(union_index):
+                return record
+        return None
+
+    def _require_user_union_record(self, union_index: int) -> PcbUnionNameRecord:
+        typed_indexes = self._typed_smart_union_indexes()
+        if int(union_index) in typed_indexes:
+            raise ValueError(f"Union {union_index} is a typed smart union")
+        record = self._user_union_record(int(union_index))
+        if record is None:
+            raise ValueError(f"User union {union_index} does not exist")
+        return record
+
+    def _typed_via_child_collision_indexes(self) -> set[int]:
+        return {
+            record.union_index & 0xFF
+            for record in self.smart_unions
+            if record.union_type in {2, 6} and record.union_index & 0xFF
+        }
+
+    def _next_user_union_index(self) -> int:
+        used = {record.union_index for record in self.union_name_records}
+        used.update(self._typed_smart_union_indexes())
+        small_used = [index for index in used if 0 < index < 0x100000]
+        candidate = max(small_used, default=0) + 1
+        via_child_collisions = self._typed_via_child_collision_indexes()
+        while candidate in used or candidate in via_child_collisions:
+            candidate += 1
+        return candidate
+
+    def _validate_new_user_union_index(self, union_index: int | None) -> int:
+        if union_index is None:
+            return self._next_user_union_index()
+        value = int(union_index)
+        if value <= 0:
+            raise ValueError("User-union indexes must be positive")
+        if value > 0x7FFFFF:
+            raise ValueError(
+                "User-union indexes must fit the AD packed membership field"
+            )
+        if value in self._typed_smart_union_indexes():
+            raise ValueError(f"Union {value} is a typed smart union")
+        if self._user_union_record(value) is not None:
+            raise ValueError(f"User union {value} already exists")
+        if value in self._typed_via_child_collision_indexes():
+            raise ValueError(
+                f"User union {value} collides with a generated via smart-union child"
+            )
+        return value
+
+    def _set_union_name_records(
+        self,
+        records: tuple[PcbUnionNameRecord, ...],
+    ) -> None:
+        self.union_name_records = records
+        self._union_authoring_dirty = True
+
+    def _user_union_view_for_index(self, union_index: int) -> PcbUserUnion:
+        for user_union in self.user_unions:
+            if user_union.union_index == int(union_index):
+                return user_union
+        record = self._require_user_union_record(int(union_index))
+        return PcbUserUnion(record.union_index, record.name, ())
+
+    def _mark_user_union_member_collection_dirty(self, collection: str) -> None:
+        builder = self._authoring_builder
+        if builder is None:
+            return
+        dirty_attr_by_collection = {
+            "fills": "_fills_dirty",
+            "pads": "_pads_dirty",
+            "vias": "_vias_dirty",
+            "texts": "_texts_dirty",
+            "components": "_components_dirty",
+            "regions": "_regions_dirty",
+            "shapebased_regions": "_regions_dirty",
+            "polygons": "_polygons_dirty",
+            "component_bodies": "_component_bodies_dirty",
+            "shapebased_component_bodies": "_component_bodies_dirty",
+        }
+        dirty_attr = dirty_attr_by_collection.get(collection)
+        if dirty_attr is not None:
+            setattr(builder, dirty_attr, True)
+
+    @staticmethod
+    def _member_union_index(collection: str, obj: object) -> int:
+        if collection in {"tracks", "arcs", "fills"}:
+            return pcb_packed_mask_user_union_index(obj) or -1
+        if collection == "pads":
+            return pcb_pad_user_union_index(obj) or -1
+        if collection == "texts":
+            return int(getattr(obj, "text_union_index", 0))
+        return int(getattr(obj, "union_index", 0))
+
+    @staticmethod
+    def _set_packed_mask_user_union_index(
+        primitive: object,
+        union_index: int | None,
+    ) -> None:
+        raw_value = int(getattr(primitive, "solder_mask_expansion", 0))
+        encoded = raw_value & 0xFF
+        if union_index is not None:
+            union_value = int(union_index)
+            if union_value < 0 or union_value > 0x7FFFFF:
+                raise ValueError(
+                    "User-union indexes must fit the AD packed membership field"
+                )
+            encoded |= union_value << 8
+        setattr(primitive, "union_index", 0xFFFFFFFF)
+        setattr(primitive, "solder_mask_expansion", encoded)
+
+    @staticmethod
+    def _set_pad_user_union_index(pad: object, union_index: int | None) -> None:
+        if union_index is not None:
+            union_value = int(union_index)
+            if union_value < 0 or union_value > 0xFFFFFFFF:
+                raise ValueError("Pad user-union indexes must fit uint32")
+        else:
+            union_value = 0
+        setattr(pad, "union_index", 0xFFFFFFFF)
+        setattr(pad, "pad_user_union_index", union_value)
+
+    def _locate_user_union_member(self, member: object) -> PcbUnionMemberRef:
+        if isinstance(member, PcbUnionMemberRef):
+            member = member.obj
+        for collection, _union_attr in PCB_USER_UNION_MEMBER_COLLECTIONS:
+            for object_index, obj in enumerate(getattr(self, collection, ())):
+                if obj is member:
+                    return PcbUnionMemberRef(
+                        collection=collection,
+                        object_index=object_index,
+                        union_index=self._member_union_index(collection, obj),
+                        obj=obj,
+                    )
+        raise ValueError("Union member does not belong to this PcbDoc")
+
+    def _component_user_union_member_refs(
+        self,
+        component_index: int,
+    ) -> tuple[PcbUnionMemberRef, ...]:
+        refs: list[PcbUnionMemberRef] = [
+            PcbUnionMemberRef(
+                collection="components",
+                object_index=component_index,
+                union_index=self._member_union_index(
+                    "components", self.components[component_index]
+                ),
+                obj=self.components[component_index],
+            )
+        ]
+        primitives_by_collection = self.get_component_primitives(component_index)
+        for collection, primitives in primitives_by_collection.items():
+            if collection == "board_regions":
+                continue
+            for primitive in primitives:
+                refs.append(self._locate_user_union_member(primitive))
+        for object_index, body in enumerate(self.shapebased_component_bodies):
+            if body.component_index != component_index:
+                continue
+            refs.append(
+                PcbUnionMemberRef(
+                    collection="shapebased_component_bodies",
+                    object_index=object_index,
+                    union_index=self._member_union_index(
+                        "shapebased_component_bodies", body
+                    ),
+                    obj=body,
+                )
+            )
+        if not refs:
+            raise ValueError(
+                f"Component {component_index} has no union-authorable primitives"
+            )
+        return tuple(refs)
+
+    def _expand_user_union_member_refs(
+        self,
+        members: Sequence[object],
+    ) -> tuple[PcbUnionMemberRef, ...]:
+        refs: list[PcbUnionMemberRef] = []
+        seen: set[tuple[str, int]] = set()
+        for member in members:
+            expanded: tuple[PcbUnionMemberRef, ...] | None = None
+            if isinstance(member, PcbUnionMemberRef):
+                expanded = (self._locate_user_union_member(member.obj),)
+            else:
+                for component_index, component in enumerate(self.components):
+                    if component is member:
+                        expanded = self._component_user_union_member_refs(
+                            component_index
+                        )
+                        break
+            if expanded is None:
+                expanded = (self._locate_user_union_member(member),)
+            for ref in expanded:
+                refs_to_add = [ref]
+                if ref.collection == "shapebased_regions" and ref.object_index < len(
+                    self.regions
+                ):
+                    paired_region = self.regions[ref.object_index]
+                    refs_to_add.append(
+                        PcbUnionMemberRef(
+                            collection="regions",
+                            object_index=ref.object_index,
+                            union_index=self._member_union_index(
+                                "regions", paired_region
+                            ),
+                            obj=paired_region,
+                        )
+                    )
+                for ref_to_add in refs_to_add:
+                    key = (ref_to_add.collection, ref_to_add.object_index)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    refs.append(ref_to_add)
+        return tuple(refs)
+
+    def _set_user_union_member_ref(
+        self,
+        member: PcbUnionMemberRef,
+        union_index: int | None,
+    ) -> None:
+        if member.collection in {"tracks", "arcs", "fills"}:
+            self._set_packed_mask_user_union_index(member.obj, union_index)
+        elif member.collection == "texts":
+            setattr(
+                member.obj,
+                "text_union_index",
+                0 if union_index is None else union_index,
+            )
+        elif member.collection == "pads":
+            self._set_pad_user_union_index(member.obj, union_index)
+        elif member.collection == "components":
+            union_value = 0 if union_index is None else int(union_index)
+            setattr(member.obj, "union_index", union_value)
+            raw_record = getattr(member.obj, "raw_record", None)
+            if isinstance(raw_record, dict):
+                raw_record["UNIONINDEX"] = str(union_value)
+        else:
+            setattr(
+                member.obj, "union_index", 0 if union_index is None else union_index
+            )
+            if member.collection in {
+                "component_bodies",
+                "shapebased_component_bodies",
+                "regions",
+                "shapebased_regions",
+            }:
+                properties = getattr(member.obj, "properties", None)
+                if isinstance(properties, dict):
+                    properties["UNIONINDEX"] = str(
+                        0 if union_index is None else int(union_index)
+                    )
+                if member.collection == "regions":
+                    setattr(member.obj, "_properties_raw", None)
+                    setattr(member.obj, "_properties_raw_signature", None)
+                if member.collection == "shapebased_regions":
+                    setattr(member.obj, "_raw_properties_bytes", None)
+                    setattr(member.obj, "_props_has_trailing_null", False)
+        self._mark_user_union_member_collection_dirty(member.collection)
+        self._union_authoring_dirty = True
+
+    def create_user_union(
+        self,
+        name: str,
+        members: Sequence[object] = (),
+        *,
+        union_index: int | None = None,
+    ) -> PcbUserUnion:
+        """
+        Create a named user-defined PCB union and optionally assign members.
+
+        `members` may contain parsed primitive objects, `PcbUnionMemberRef`
+        objects, or component records. Component records expand to the parsed
+        union-authorable primitives owned by that component. `union_index` is
+        optional replay metadata for deterministic round-trip/recreation flows;
+        omit it for normal auto allocation.
+        """
+        union_name = self._validate_user_union_name(name)
+        resolved_union_index = self._validate_new_user_union_index(union_index)
+        records = (
+            *self.union_name_records,
+            PcbUnionNameRecord(
+                union_index=resolved_union_index,
+                name=union_name,
+                byte_count=pcb_union_name_byte_count(union_name),
+            ),
+        )
+        self._set_union_name_records(records)
+        for member in self._expand_user_union_member_refs(members):
+            self._set_user_union_member_ref(member, resolved_union_index)
+        return self._user_union_view_for_index(resolved_union_index)
+
+    def rename_user_union(self, union_index: int, name: str) -> PcbUserUnion:
+        """
+        Rename an existing user-defined PCB union.
+        """
+        self._require_user_union_record(union_index)
+        union_name = self._validate_user_union_name(name)
+        records = tuple(
+            PcbUnionNameRecord(
+                union_index=record.union_index,
+                name=union_name,
+                byte_count=pcb_union_name_byte_count(union_name),
+            )
+            if record.union_index == int(union_index)
+            else record
+            for record in self.union_name_records
+        )
+        self._set_union_name_records(records)
+        return self._user_union_view_for_index(int(union_index))
+
+    def add_user_union_member(
+        self,
+        union_index: int,
+        member: object,
+    ) -> PcbUserUnion:
+        """
+        Add one primitive, member reference, or component to a user union.
+        """
+        self._require_user_union_record(union_index)
+        typed_indexes = self._typed_smart_union_indexes()
+        user_indexes = {
+            record.union_index
+            for record in self.union_name_records
+            if record.union_index not in typed_indexes
+        }
+        for ref in self._expand_user_union_member_refs((member,)):
+            if ref.union_index in typed_indexes:
+                raise ValueError("Cannot move a typed smart-union member")
+            if ref.union_index in user_indexes and ref.union_index != int(union_index):
+                raise ValueError(
+                    f"Member already belongs to user union {ref.union_index}"
+                )
+            self._set_user_union_member_ref(ref, int(union_index))
+        return self._user_union_view_for_index(int(union_index))
+
+    def remove_user_union_member(
+        self,
+        union_index: int,
+        member: object,
+    ) -> PcbUserUnion:
+        """
+        Remove one primitive, member reference, or component from a user union.
+        """
+        self._require_user_union_record(union_index)
+        refs = self._expand_user_union_member_refs((member,))
+        removed = False
+        for ref in refs:
+            if ref.union_index != int(union_index):
+                continue
+            self._set_user_union_member_ref(ref, None)
+            removed = True
+        if not removed:
+            raise ValueError(f"Member is not in user union {union_index}")
+        return self._user_union_view_for_index(int(union_index))
+
+    def delete_user_union(self, union_index: int) -> None:
+        """
+        Delete a user-defined PCB union and clear its parsed member fields.
+        """
+        self._require_user_union_record(union_index)
+        for user_union in self.user_unions:
+            if user_union.union_index != int(union_index):
+                continue
+            for member in user_union.members:
+                self._set_user_union_member_ref(member, None)
+            break
+        self._set_union_name_records(
+            tuple(
+                record
+                for record in self.union_name_records
+                if record.union_index != int(union_index)
+            )
+        )
+
     def get_unique_footprints(self) -> set[str]:
         """
         Get unique footprint names used in the design.
@@ -4971,7 +5828,8 @@ class AltiumPcbDoc:
         """
         String representation.
         """
-        return f"AltiumPcbDoc({self.filepath.name}, {len(self.components)} components, {len(self.get_unique_footprints())} unique footprints)"
+        name = self.filepath.name if self.filepath is not None else "<memory>"
+        return f"AltiumPcbDoc({name}, {len(self.components)} components, {len(self.get_unique_footprints())} unique footprints)"
 
     def __repr__(self) -> str:
         """

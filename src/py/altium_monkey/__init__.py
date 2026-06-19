@@ -13,10 +13,43 @@ import importlib
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .altium_api_markers import public_api
 from ._version import __version__, __version_info__
+
+if TYPE_CHECKING:
+    from .altium_design import AltiumDesign
+    from .altium_draftsman import (
+        AltiumDraftsmanDocument,
+        AltiumDraftsmanDocumentOptions,
+        AltiumDraftsmanItem,
+        AltiumDraftsmanNote,
+        AltiumDraftsmanNoteElement,
+        AltiumDraftsmanPage,
+        AltiumDraftsmanPicture,
+        AltiumDraftsmanText,
+        DraftsmanColor,
+        DraftsmanFontDecoration,
+        DraftsmanFontStyle,
+        DraftsmanHorizontalAlignment,
+        DraftsmanMargin,
+        DraftsmanNoteBorderStyle,
+        DraftsmanPoint,
+        DraftsmanRect,
+        DraftsmanSize,
+        DraftsmanStandardSheetSize,
+        DraftsmanVerticalAlignment,
+    )
+    from .altium_pcbdoc import AltiumPcbDoc
+    from .altium_pcbdoc_builder import PcbCustomPadLayerShapeSpec, PcbDocBuilder
+    from .altium_pcblib import (
+        AltiumPcbFootprint,
+        AltiumPcbLib,
+        AltiumPcbLibPrimitiveParameterGroup,
+    )
+    from .altium_schdoc import AltiumSchDoc
+    from .altium_schlib import AltiumSchLib
 
 _ALTIUM_REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -242,6 +275,8 @@ from .altium_record_pcb__arc import AltiumPcbArc
 from .altium_record_pcb__fill import AltiumPcbFill
 from .altium_record_pcb__model import AltiumPcbModel
 from .altium_pcb_enums import (
+    MechanicalLayerKind,
+    PadHoleShape,
     PadShape,
     PcbBarcodeKind,
     PcbBarcodeRenderMode,
@@ -445,8 +480,10 @@ __all__ = [
     # PCB record classes
     "PcbLayer",
     "PcbRecordType",
+    "MechanicalLayerKind",
     "AltiumPcbTrack",
     "AltiumPcbArc",
+    "PadHoleShape",
     "PadShape",
     "PcbMaskExpansion",
     "PcbMaskExpansionMode",
@@ -494,6 +531,7 @@ __all__ = [
     "AltiumPcbDoc",
     "AltiumPcbLib",
     "AltiumPcbFootprint",
+    "AltiumPcbLibPrimitiveParameterGroup",
     "AltiumDraftsmanDocument",
     "AltiumDraftsmanPage",
     "AltiumDraftsmanItem",
@@ -525,6 +563,7 @@ __all__ = [
     "PcbStepModelBounds",
     "compute_step_model_bounds_mils",
     "PcbDocBuilder",
+    "PcbCustomPadLayerShapeSpec",
 ]
 
 _EXTRA_PUBLIC_SURFACES: dict[str, tuple[str, ...]] = {
@@ -535,6 +574,28 @@ _EXTRA_PUBLIC_SURFACES: dict[str, tuple[str, ...]] = {
     ),
     "altium_embedded_files": ("classify_embedded_model_format",),
     "altium_launcher": ("AltiumLauncher",),
+    "altium_layer_stack_document": (
+        "AltiumBoardBendLine",
+        "AltiumImpedanceProfile",
+        "AltiumImpedanceProfileSpec",
+        "AltiumLayerPair",
+        "AltiumLayerRegistry",
+        "AltiumLayerRegistryEntry",
+        "AltiumLayerStackDocument",
+        "AltiumNativePcbDocWriteSupport",
+        "AltiumPhysicalStack",
+        "AltiumRigidCopperLayerSpec",
+        "AltiumRigidDielectricLayerSpec",
+        "AltiumStackBendLine",
+        "AltiumStackBranch",
+        "AltiumStackBranchSection",
+        "AltiumStackBranchStack",
+        "AltiumStackLayer",
+        "AltiumStackRegion",
+        "AltiumStackSubstack",
+        "AltiumTransmissionLine",
+        "AltiumTransmissionLineSpec",
+    ),
     "altium_netlist_options": ("NetlistOptions",),
     "altium_pcb_component": ("AltiumPcbComponent",),
     "altium_pcb_ipc2581_writer": ("write_ipc2581",),
@@ -572,7 +633,9 @@ _EXTRA_PUBLIC_SURFACES: dict[str, tuple[str, ...]] = {
     ),
     "altium_resolved_layer_stack": (
         "ResolvedLayer",
+        "ResolvedLayerEnvelopeRow",
         "ResolvedLayerStack",
+        "ResolvedStackEnvelope",
         "resolved_layer_stack_from_board",
         "resolved_layer_stack_from_pcbdoc",
     ),
@@ -643,6 +706,11 @@ def __getattr__(name: str) -> Any:
 
         public_api(PcbDocBuilder)
         return PcbDocBuilder
+    if name == "PcbCustomPadLayerShapeSpec":
+        from .altium_pcbdoc_builder import PcbCustomPadLayerShapeSpec
+
+        public_api(PcbCustomPadLayerShapeSpec)
+        return PcbCustomPadLayerShapeSpec
     if name == "AltiumPcbLib":
         from .altium_pcblib import AltiumPcbLib
 
@@ -653,6 +721,11 @@ def __getattr__(name: str) -> Any:
 
         public_api(AltiumPcbFootprint)
         return AltiumPcbFootprint
+    if name == "AltiumPcbLibPrimitiveParameterGroup":
+        from .altium_pcblib import AltiumPcbLibPrimitiveParameterGroup
+
+        public_api(AltiumPcbLibPrimitiveParameterGroup)
+        return AltiumPcbLibPrimitiveParameterGroup
     if name == "AltiumSchDoc":
         from .altium_schdoc import AltiumSchDoc
 
