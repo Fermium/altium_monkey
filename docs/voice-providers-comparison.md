@@ -9,7 +9,7 @@
 ## TL;DR
 
 - **Best voice + fastest to a working demo → ElevenLabs Agents** (our chosen v0).
-- **Cheapest for personal volume → LiveKit Cloud** — its free Build tier (1,000 agent-min/mo + a free inbound US number + a native Anthropic plugin) covers our ~440 min/mo for **$0** orchestration.
+- **Cheapest for personal volume → LiveKit Cloud** — its free Build tier (1,000 agent-min/mo + a free inbound US number) covers our ~440 min/mo for **$0** orchestration. (Note: its first-party `anthropic` plugin wraps the Claude *API*, not Claude *Code* — we still build the custom node either way. See the contract note below.)
 - **Simplest telephony → Twilio ConversationRelay** (it *is* Twilio; no separate phone wiring).
 - **Most control / portability → Pipecat** (self-host the framework for free, or its managed Cloud).
 - The adapter's *core* (Claude Agent SDK session + filler/keepalive) is reused everywhere, but the *outer shell* differs per platform — see §"Integration contract" below.
@@ -123,7 +123,7 @@ At personal scale the spread is **$0 → ~$50/mo** for the *voice* layer — and
 ## Recommendation
 
 1. **v0 (now): ElevenLabs Agents** — as decided. Best voice, 15–30 min to stand up, OpenAI-shaped adapter (the portable kernel). Accept the higher per-minute to validate the experience fast.
-2. **Cost path (when the bill matters): LiveKit Cloud** — free at our volume, native Anthropic plugin, free inbound number, and the best Swift SDK for the eventual CallKit/CarPlay app. Migrating means swapping the adapter's *shell* (OpenAI-SSE → LiveKit custom-LLM node); the Claude-session kernel is unchanged.
+2. **Cost path (when the bill matters): LiveKit Cloud** — free at our volume, free inbound number, low-latency WebRTC, and the best Swift SDK for the eventual CallKit/CarPlay app. (Its `anthropic` plugin is Claude-the-*API*, not Claude Code — we wrap the Agent SDK as a custom LLM node regardless.) Migrating means swapping the adapter's *shell* (OpenAI-SSE → LiveKit custom-LLM node); the Claude-session kernel is unchanged.
 3. **Telephony-simple fallback: Twilio ConversationRelay** — if wiring Twilio under ElevenLabs proves annoying, ConversationRelay collapses telephony + STT/TTS into one Twilio bill with a dead-simple WS-text contract.
 4. **Self-host endgame: Pipecat OSS** — if you want near-zero marginal cost and full control once the design is proven.
 
