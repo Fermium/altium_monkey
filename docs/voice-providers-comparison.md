@@ -9,7 +9,8 @@
 ## TL;DR
 
 - **Best voice + fastest to a working demo → ElevenLabs Agents** (our chosen v0).
-- **Cheapest for personal volume → LiveKit Cloud** — its free Build tier (1,000 agent-min/mo + a free inbound US number) covers our ~440 min/mo for **$0** orchestration. (Note: its first-party `anthropic` plugin wraps the Claude *API*, not Claude *Code* — we still build the custom node either way. See the contract note below.)
+- **Cheapest for personal volume → LiveKit Cloud** — its free Build tier (1,000 agent-min/mo) covers our ~440 min/mo for **$0** orchestration. (Caveats for a UK user: the free inbound number is **US-only** — rent a UK number or go app/WebRTC instead; and its first-party `anthropic` plugin wraps the Claude *API*, not Claude *Code*, so we build the custom node either way. See the contract note below.)
+- **Region (UK):** we're UK-based — run everything in an **EU/UK region** (ElevenLabs EU residency endpoint, LiveKit/Twilio EU regions, brain server in London). Transatlantic hops add ~100–150 ms each across a multi-hop voice turn and dominate the experience. Use a **UK phone number** (free to call from a UK mobile plan), never a US one.
 - **Simplest telephony → Twilio ConversationRelay** (it *is* Twilio; no separate phone wiring).
 - **Most control / portability → Pipecat** (self-host the framework for free, or its managed Cloud).
 - The adapter's *core* (Claude Agent SDK session + filler/keepalive) is reused everywhere, but the *outer shell* differs per platform — see §"Integration contract" below.

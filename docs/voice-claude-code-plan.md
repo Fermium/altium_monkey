@@ -115,7 +115,9 @@ async def chat_completions(req: ChatRequest, authorization: str = Header(...)):
 
 ## 6. Telephony & the car
 
-- **v0 — phone number (no app, no Apple approval).** ElevenLabs has native Twilio + SIP. Assign a number to the agent; call it from the car over Bluetooth hands-free. This is the fastest route to the actual goal. (Telephony billed separately, ~$0.01–0.026/min/leg via Twilio/Vonage.)
+> **Region (UK):** run the whole stack in an **EU/UK region**. A voice turn is several network hops (STT → LLM → TTS); a transatlantic round-trip adds ~100–150 ms *per hop* and breaks the real-time feel. Use ElevenLabs' EU residency endpoint (`api.eu.residency.elevenlabs.io`), an EU/London region on LiveKit/Twilio, and host the **brain server in London** (e.g. AWS `eu-west-2`) so Claude Code, the adapter, and the voice platform are co-located. This matters more than vendor choice.
+
+- **v0 — phone number (no app, no Apple approval).** ElevenLabs has native Twilio + SIP. Use a **UK number** (rental ~£1–8/mo + low inbound per-min — *not* a US number): calling it from the car is a normal UK call, which is included/unlimited on essentially every UK mobile plan, so it's free at point of use. Assign the number to the agent and call it over Bluetooth hands-free. (LiveKit's free Build-tier number is US-only and not useful from the UK.)
 - **v1 — CallKit iOS app (better audio, still no approval).** A normal iOS app that models the session as a **CallKit VoIP call** surfaces as the native in-car call UI and routes audio through the car — **CallKit needs no CarPlay entitlement**. Build it, sideload to your own iPhone with a paid dev account ($99/yr), done. Connect it to the agent via ElevenLabs' Swift/WebRTC SDK for HD audio instead of 8 kHz telephony.
 - **v2 — true CarPlay UI (optional).** iOS 26.4 (Feb 2026) added a CarPlay entitlement category for **"voice-based conversational apps"** — the first official third-party slot. Only needed if you want an on-screen transcript/buttons; requires Apple to grant the entitlement (a request form, separate from App Store review).
 
