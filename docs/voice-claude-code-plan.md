@@ -141,7 +141,7 @@ Notes:
 
 ## 9. Competitor landscape & why ElevenLabs now
 
-Every serious managed platform supports a **bring-your-own / OpenAI-compatible custom LLM** and telephony. That's the crucial fact: **our adapter is portable**, so the v0 choice is reversible.
+Every serious managed platform supports a **bring-your-own / OpenAI-compatible custom LLM** and telephony. That's the crucial fact: **our adapter is portable**, so the v0 choice is reversible. A full provider-by-provider deep dive (integration contracts, telephony, latency, free tiers, per-provider cost at our volume) is in [`voice-providers-comparison.md`](./voice-providers-comparison.md).
 
 | Platform | BYO LLM | Telephony | ~Price (voice/orchestration) | Notes |
 |----------|---------|-----------|------------------------------|-------|
