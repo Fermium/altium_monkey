@@ -86,6 +86,7 @@ from .altium_record_pcb__region import AltiumPcbRegion
 from .altium_record_pcb__shapebased_region import AltiumPcbShapeBasedRegion
 from .altium_record_pcb__via import AltiumPcbVia
 from .altium_record_pcb__component_body import AltiumPcbComponentBody
+from .altium_record_pcb__opaque import AltiumPcbOpaqueRecord
 from .altium_utilities import encode_altium_record
 
 if TYPE_CHECKING:
@@ -278,6 +279,8 @@ class AltiumPcbFootprint:
         self.vias: list["AltiumPcbVia"] = []
         self.regions: list["AltiumPcbRegion | AltiumPcbShapeBasedRegion"] = []
         self.component_bodies: list["AltiumPcbComponentBody"] = []
+        # Unrecognized primitive records preserved verbatim for round-tripping.
+        self.opaque_records: list["AltiumPcbOpaqueRecord"] = []
 
         self.parameters: dict[str, str] = {}
         self.primitive_parameter_groups: list[AltiumPcbLibPrimitiveParameterGroup] = []
@@ -1531,12 +1534,26 @@ class AltiumPcbFootprint:
                     offset += bytes_consumed
 
                 else:
-                    # Unknown type - skip 1 byte
-                    if debug:
-                        log.warning(
-                            f"Unknown record type at offset {offset}: 0x{type_byte:02X}"
-                        )
-                    offset += 1
+                    # Unknown record type: preserve it verbatim instead of
+                    # skipping a byte at a time. All PCB primitives are framed
+                    # [type:1][len:4 LE][payload:len], so we can span the whole
+                    # record, keep the parser in sync, and round-trip it
+                    # losslessly (this is what the JSON serdes builds on).
+                    opaque = AltiumPcbOpaqueRecord()
+                    bytes_consumed = opaque.parse_from_binary(data, offset)
+                    if bytes_consumed <= 0:
+                        break
+                    self.opaque_records.append(opaque)
+                    self._record_order.append(opaque)
+                    log.warning(
+                        "Footprint %r: preserving unknown PCB record type "
+                        "0x%02X (%d bytes) verbatim at offset %d",
+                        self.name,
+                        type_byte,
+                        bytes_consumed,
+                        offset,
+                    )
+                    offset += bytes_consumed
 
             except Exception as e:
                 log.warning(
