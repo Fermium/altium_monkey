@@ -28,6 +28,10 @@ from .altium_embedded_files import (
 from .altium_pcb_component import AltiumPcbComponent
 from .altium_pcbdoc_builder_components import build_component_stream
 from .altium_pcb_dimension import AltiumPcbDimension, parse_dimensions6_stream
+from .altium_record_pcb__connection import (
+    AltiumPcbConnection,
+    parse_connections6_stream,
+)
 from .altium_pcb_extended_primitive_information import (
     AltiumPcbExtendedPrimitiveInformation,
     parse_extended_primitive_information_stream,
@@ -1039,6 +1043,7 @@ class AltiumPcbDoc:
         self.polygons: list[AltiumPcbPolygon] = []
         self.rules: list[AltiumPcbRule] = []
         self.dimensions: list[AltiumPcbDimension] = []
+        self.connections: list[AltiumPcbConnection] = []
         self.extended_primitive_information: list[
             AltiumPcbExtendedPrimitiveInformation
         ] = []
@@ -2981,6 +2986,26 @@ class AltiumPcbDoc:
             if verbose:
                 log.warning(f"    Error parsing Dimensions6/Data: {exc}")
 
+    def _parse_connections_stream(self, ole: AltiumOleFile, *, verbose: bool) -> None:
+        """
+        Parse Connections6/Data into PCB connection (ratsnest) objects.
+
+        Read-only: the stream is still serialized verbatim, so this never
+        affects round-trip output.
+        """
+        if not ole.exists(["Connections6", "Data"]):
+            return
+        if verbose:
+            log.info("  Parsing Connections6/Data...")
+        try:
+            connections_data = ole.openstream(["Connections6", "Data"])
+            self.connections = parse_connections6_stream(connections_data)
+            if verbose:
+                log.info(f"    Found {len(self.connections)} connections")
+        except Exception as exc:
+            if verbose:
+                log.warning(f"    Error parsing Connections6/Data: {exc}")
+
     def _parse_extended_primitive_information_stream(
         self,
         ole: AltiumOleFile,
@@ -3092,6 +3117,7 @@ class AltiumPcbDoc:
         """
         self._parse_rules_stream(ole, verbose=verbose)
         self._parse_dimensions_stream(ole, verbose=verbose)
+        self._parse_connections_stream(ole, verbose=verbose)
         self._parse_extended_primitive_information_stream(ole, verbose=verbose)
         self._parse_custom_shapes_streams(ole, verbose=verbose)
 

@@ -272,6 +272,7 @@ from .altium_pcb_mask_expansion import PcbMaskExpansion, PcbMaskExpansionMode
 
 # PCB record classes
 from .altium_record_pcb__arc import AltiumPcbArc
+from .altium_record_pcb__connection import AltiumPcbConnection
 from .altium_record_pcb__fill import AltiumPcbFill
 from .altium_record_pcb__model import AltiumPcbModel
 from .altium_pcb_enums import (
@@ -496,6 +497,7 @@ __all__ = [
     "PcbTextJustification",
     "AltiumPcbPad",
     "AltiumPcbText",
+    "AltiumPcbConnection",
     "AltiumPcbFill",
     "AltiumPcbRegion",
     "AltiumPcbModel",

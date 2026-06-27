@@ -22,7 +22,8 @@ SchLib. SchDoc/SchLib typed views are live filtered query views with explicit
 structural APIs such as `add_object(...)`, `insert_object(...)`, and
 `remove_object(...)`. PcbDoc instead exposes parsed records as typed lists such
 as `pcbdoc.tracks`, `pcbdoc.arcs`, `pcbdoc.pads`, `pcbdoc.vias`,
-`pcbdoc.regions`, `pcbdoc.texts`, and `pcbdoc.components`.
+`pcbdoc.regions`, `pcbdoc.texts`, `pcbdoc.connections`, and
+`pcbdoc.components`.
 
 For authoring, prefer high-level helpers:
 
@@ -150,6 +151,21 @@ body.
 records from `record_type`, `record_leader`, and payload bytes. This is a
 preservation/transcode API for imported dimensions, not a high-level dimension
 construction API or full object-oriented dimension model.
+
+## Connections (ratsnest)
+
+`pcbdoc.connections` exposes a read-only view of the `Connections6/Data` stream
+as `AltiumPcbConnection` records. A connection is an unrouted guidance line
+("ratsnest") joining two points on one net; it is derived connectivity that
+Altium regenerates from the netlist, so there is no authoring API. Each record
+exposes `net_index`, the two endpoints (`x1`/`y1`/`x2`/`y2` in internal units,
+plus `*_mils` properties), `length_mils`, and `layer`. The stream is serialized
+verbatim on save, so reading it never changes round-trip output.
+
+```python
+for conn in pcbdoc.connections:
+    print(conn.net_index, conn.x1_mils, conn.y1_mils, "->", conn.x2_mils, conn.y2_mils)
+```
 
 ## Text
 
